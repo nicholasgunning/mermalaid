@@ -27,6 +27,7 @@ import {
 } from '../utils/renderMermaidPreviewWithFallback'
 import { MERMLAID_PREVIEW_DEBOUNCE_MS } from '../constants/mermalaidTiming'
 import VisualEditor from './VisualEditor'
+import TabStartScreen from './TabStartScreen'
 import './Preview.css'
 
 const MIN_PREVIEW_ZOOM = 0.2
@@ -195,12 +196,19 @@ interface PreviewProps {
   selectedBlockIndex: number
   setSelectedBlockIndex: (index: number | ((prev: number) => number)) => void
   isMobile?: boolean
+  /** Empty-tab actions; both fill this tab rather than opening another one. */
+  onNewDiagram?: () => void
+  onOpenFile?: () => void
+  recentPaths?: string[]
+  onOpenRecent?: (path: string) => void
+  fileLabel?: (path: string) => string
 }
 
 export default function Preview({
   code, setError, onCodeChange,
   activeCode, mermaidBlocks, selectedBlockIndex, setSelectedBlockIndex,
   isMobile = false,
+  onNewDiagram, onOpenFile, recentPaths, onOpenRecent, fileLabel,
 }: PreviewProps) {
   const { mermaidTheme } = useTheme()
   const previewRef = useRef<HTMLDivElement>(null)
@@ -245,6 +253,8 @@ export default function Preview({
     : null
   const canEdit =
     parsedDiagram !== null && isEditableDiagram(codeForBeautifulMermaid)
+  /** An empty tab asks what it should hold instead of showing an empty canvas. */
+  const showStartScreen = !diagramCode && Boolean(onNewDiagram && onOpenFile)
 
   const handleCodeChange = (newCode: string) => {
     if (!onCodeChange) return
@@ -294,7 +304,9 @@ export default function Preview({
 
       if (!diagramCode) {
         if (renderIdRef.current === currentId) {
-          container.innerHTML = '<div class="empty-preview">Start typing your Mermaid diagram...</div>'
+          container.innerHTML = showStartScreen
+            ? ''
+            : '<div class="empty-preview">Start typing your Mermaid diagram...</div>'
           setError(null)
           lastFallbackToastRef.current = null
           setDiagramReady(false)
@@ -359,6 +371,7 @@ export default function Preview({
     mermaidTheme,
     previewThemeOptions,
     officialYamlConfig,
+    showStartScreen,
   ])
 
   // Run fit in useEffect (not useLayoutEffect): TransformWrapper applies `disabled` via instance.update
@@ -447,6 +460,16 @@ export default function Preview({
         </div>
       </div>
       <div className="preview-content">
+        {showStartScreen && onNewDiagram && onOpenFile && (
+          <TabStartScreen
+            onNewDiagram={onNewDiagram}
+            onOpenFile={onOpenFile}
+            recentPaths={recentPaths}
+            onOpenRecent={onOpenRecent}
+            fileLabel={fileLabel}
+            isMobile={isMobile}
+          />
+        )}
         <TransformWrapper
           ref={transformRef}
           disabled={!diagramReady}

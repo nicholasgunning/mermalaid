@@ -181,8 +181,10 @@ describe('App (web)', () => {
         'aria-selected',
         'true',
       )
-      // The new tab starts from the empty-diagram seed, not the first tab's content.
-      expect(queries.getByTestId('monaco-editor-mock')).toHaveTextContent('A[Start] --> B[End]')
+      // A new tab is an empty workspace offering both ways to fill it.
+      expect(queries.getByTestId('monaco-editor-mock')).toHaveTextContent('')
+      expect(queries.getByRole('button', { name: 'New diagram' })).toBeInTheDocument()
+      expect(queries.getByRole('button', { name: 'Open .mmd file…' })).toBeInTheDocument()
     })
 
     await user.click(within(tabList).getByRole('tab', { name: 'Untitled 1' }))
@@ -190,6 +192,69 @@ describe('App (web)', () => {
     await waitFor(() => {
       expect(queries.getByTestId('monaco-editor-mock')).toHaveTextContent('B{Decision}')
     })
+  })
+
+  it('starts a diagram in the empty tab without opening another one', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <MemoryRouter initialEntries={['/editor']}>
+        <App />
+      </MemoryRouter>,
+    )
+    const queries = within(container)
+
+    await waitFor(() => expect(queries.getByRole('button', { name: 'New' })).toBeInTheDocument())
+    await user.click(queries.getByRole('button', { name: 'New' }))
+
+    const tabList = queries.getByRole('tablist', { name: 'Open diagrams' })
+    await waitFor(() => expect(within(tabList).getAllByRole('tab')).toHaveLength(2))
+
+    await user.click(await screen.findByRole('button', { name: 'New diagram' }))
+
+    await waitFor(() => {
+      expect(queries.getByTestId('monaco-editor-mock')).toHaveTextContent('A[Start] --> B[End]')
+      expect(queries.queryByRole('button', { name: 'New diagram' })).not.toBeInTheDocument()
+    })
+    // Filled in place: still two tabs, still the same one focused, still named Untitled 2.
+    expect(within(tabList).getAllByRole('tab')).toHaveLength(2)
+    expect(within(tabList).getByRole('tab', { name: 'Untitled 2' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  })
+
+  it('opens a file into the empty tab from its start screen', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <MemoryRouter initialEntries={['/editor']}>
+        <App />
+      </MemoryRouter>,
+    )
+    const queries = within(container)
+
+    await waitFor(() => expect(queries.getByRole('button', { name: 'New' })).toBeInTheDocument())
+    await user.click(queries.getByRole('button', { name: 'New' }))
+
+    const tabList = queries.getByRole('tablist', { name: 'Open diagrams' })
+    await waitFor(() => expect(within(tabList).getAllByRole('tab')).toHaveLength(2))
+
+    // The start screen's Open goes through the same file input the toolbar uses.
+    await user.click(await screen.findByRole('button', { name: 'Open .mmd file…' }))
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    await user.upload(
+      fileInput,
+      new File(['graph LR\n  Opened-->File'], 'opened.mmd', { type: 'text/plain' }),
+    )
+
+    await waitFor(() => {
+      expect(queries.getByTestId('monaco-editor-mock')).toHaveTextContent('Opened-->File')
+    })
+    // The file filled the empty tab and named it, rather than opening a third tab.
+    expect(within(tabList).getAllByRole('tab')).toHaveLength(2)
+    expect(within(tabList).getByRole('tab', { name: 'opened.mmd' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
   })
 
   it('closes a diagram tab from the tab bar', async () => {

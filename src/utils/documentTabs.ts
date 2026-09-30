@@ -10,8 +10,14 @@ import { recentFileLabel } from './recentFiles'
 export const DEFAULT_DIAGRAM_CODE =
   'graph TD\n    A[Start] --> B{Decision}\n    B -->|Yes| C[Action 1]\n    B -->|No| D[Action 2]\n    C --> E[End]\n    D --> E'
 
-/** Seed for every tab opened with New. */
+/** Starter diagram offered by the empty tab's "New diagram" action. */
 export const NEW_DIAGRAM_CODE = 'graph TD\n    A[Start] --> B[End]'
+
+/**
+ * A new tab opens empty rather than pre-filled: the tab is a workspace, and the user chooses
+ * whether it holds a new diagram or an existing file (see {@link ../components/TabStartScreen}).
+ */
+export const EMPTY_DIAGRAM_CODE = ''
 
 /** Templates a tab may still hold and count as untouched, so Open can reuse it. */
 const TEMPLATE_CODES = [DEFAULT_DIAGRAM_CODE, NEW_DIAGRAM_CODE, '']
@@ -123,8 +129,13 @@ export function openDocument(state: DiagramTabsState, input: OpenDocumentInput):
     }
   }
 
-  const reusable = state.tabs.length === 1 && isPristine(state.tabs[0]) ? state.tabs[0] : null
-  const name = input.name ?? (input.path ? recentFileLabel(input.path) : nextUntitledName(state.tabs))
+  // Opening into an untouched tab fills that tab — it is the workspace the user is looking at —
+  // instead of leaving an empty one behind.
+  const active = state.tabs.find((tab) => tab.id === state.activeId)
+  const reusable = active && isPristine(active) ? active : null
+  const name =
+    input.name ??
+    (input.path ? recentFileLabel(input.path) : (reusable?.name ?? nextUntitledName(state.tabs)))
 
   if (reusable) {
     const replaced: DiagramTab = {
@@ -135,7 +146,10 @@ export function openDocument(state: DiagramTabsState, input: OpenDocumentInput):
       savedCode,
       selectedBlockIndex: 0,
     }
-    return { tabs: [replaced], activeId: replaced.id }
+    return {
+      tabs: state.tabs.map((tab) => (tab.id === reusable.id ? replaced : tab)),
+      activeId: replaced.id,
+    }
   }
 
   const tab = createTab({ ...input, name })
@@ -143,7 +157,10 @@ export function openDocument(state: DiagramTabsState, input: OpenDocumentInput):
 }
 
 /** New empty document, always appended and focused. */
-export function addTab(state: DiagramTabsState, code: string = NEW_DIAGRAM_CODE): DiagramTabsState {
+export function addTab(
+  state: DiagramTabsState,
+  code: string = EMPTY_DIAGRAM_CODE,
+): DiagramTabsState {
   const tab = createTab({ code, name: nextUntitledName(state.tabs) })
   return { tabs: [...state.tabs, tab], activeId: tab.id }
 }
@@ -154,7 +171,7 @@ export function closeTab(state: DiagramTabsState, id: string): DiagramTabsState 
   if (index === -1) return state
 
   const tabs = state.tabs.filter((tab) => tab.id !== id)
-  if (tabs.length === 0) return createInitialState(NEW_DIAGRAM_CODE)
+  if (tabs.length === 0) return createInitialState(EMPTY_DIAGRAM_CODE)
   if (state.activeId !== id) return { tabs, activeId: state.activeId }
 
   // Focus the neighbour to the right, falling back to the one on the left.

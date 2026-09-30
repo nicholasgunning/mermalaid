@@ -62,7 +62,7 @@ function isAbortError(err: unknown): boolean {
 /**
  * Picker failures where falling back to an anchor download is appropriate.
  * Chromium throws SecurityError / NotAllowedError when transient user activation
- * is gone (e.g. after awaiting html2canvas or other async work before the picker).
+ * is gone (e.g. after awaiting a canvas render or other async work before the picker).
  */
 function isSavePickerFallbackError(err: unknown): boolean {
   if (!(err instanceof DOMException)) return false

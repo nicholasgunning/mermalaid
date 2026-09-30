@@ -54,13 +54,14 @@ Mermalaid includes the features teams usually pay for, while staying free to use
 ### File Management
 
 - **Multiple Diagram Tabs** - Keep several `.mmd` documents open at once and switch between them; unsaved tabs are marked, and the whole set of tabs is restored on your next visit
+- **Each Tab Is a Workspace** - A new tab opens empty and asks what it should hold: start a new diagram, open an existing `.mmd` file, or pick one from your recent files (desktop). Opening a file fills the empty tab you are looking at instead of adding another one
 - **Unsaved-Change Guards** - Closing a tab with unsaved edits asks first, and on the desktop app closing the window offers to save every unsaved diagram before it goes
 - **Open Files** - Import `.mmd`, `.txt`, or `.md` files (pick or drop several at once — each opens in its own tab)
 - **Live Reload (desktop)** - Edit the open file in any external editor; Mermalaid re-renders on save
 - **Save Diagrams** - Export Mermaid diagrams to local files
 - **Export Options**:
   - **SVG Export** - Vector graphics for presentations and documents
-  - **PNG Export** - Raster images for documentation and web use
+  - **PNG Export** - The full diagram at its own size (never cropped to the window, and without the preview's zoom controls), at a resolution you pick: Standard 1× through Ultra 4× for print-quality output. The dialog shows the exact pixel size before you export, and remembers your choice
 - **ASCII Export** - Unicode box-drawing for terminals (flowcharts, state, sequence, class, ER diagrams)
 - **Copy to Clipboard** - Copy Markdown-ready Mermaid blocks for docs and GitHub
 - **Private URL Share** - **Copy private link** stores encrypted diagram data in the URL fragment only (no upload, no server-side storage)

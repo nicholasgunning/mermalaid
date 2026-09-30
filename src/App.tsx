@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
@@ -25,8 +25,8 @@ import { useDocumentTabs } from './hooks/useDocumentTabs'
 import { formatUnsavedTabList, useUnsavedWindowClose } from './hooks/useUnsavedWindowClose'
 import type { LatestReleaseInfo } from './utils/githubRelease'
 import { isDiagramImportFileName } from './utils/diagramImportFiles'
-import { tabTitle } from './utils/documentTabs'
-import { addRecentFile } from './utils/recentFiles'
+import { NEW_DIAGRAM_CODE, tabTitle } from './utils/documentTabs'
+import { addRecentFile, getRecentPaths, recentFileLabel } from './utils/recentFiles'
 import type { SavedTabRecord } from './utils/saveAllUnsavedTabs'
 import {
   clearUrlFragment,
@@ -446,6 +446,25 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
     }
   }
 
+  /**
+   * Empty-tab actions. Both go through `openDocument`, which fills the focused empty tab rather
+   * than opening yet another one.
+   */
+  const handleStartNewDiagram = () => {
+    documents.openDocument({ code: NEW_DIAGRAM_CODE })
+  }
+
+  const handleOpenFileInTab = () => {
+    void toolbarRef.current?.handleOpen()
+  }
+
+  // Desktop only: reopening a recent file needs a path the app is allowed to read. Re-read when
+  // the focused tab changes, which covers every point at which an empty tab can appear.
+  const recentPaths = useMemo(
+    () => (isTauri() ? getRecentPaths() : []),
+    [documents.activeId],
+  )
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
   }
@@ -558,6 +577,11 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
             selectedBlockIndex={selectedBlockIndex}
             setSelectedBlockIndex={setSelectedBlockIndex}
             isMobile={isSmartphoneLayout}
+            onNewDiagram={handleStartNewDiagram}
+            onOpenFile={handleOpenFileInTab}
+            recentPaths={recentPaths}
+            onOpenRecent={(path) => void toolbarRef.current?.openPath(path)}
+            fileLabel={recentFileLabel}
           />
         )}
       </div>

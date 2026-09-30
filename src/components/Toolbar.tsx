@@ -9,7 +9,6 @@ import {
 import { isTauri } from '@tauri-apps/api/core'
 import { message, open } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import html2canvas from 'html2canvas'
 import { renderMermaidAscii, renderMermaid } from 'beautiful-mermaid'
 import { useTheme } from '../hooks/useTheme'
 import { useToast } from '../hooks/useToast'
@@ -34,7 +33,22 @@ import {
   buildMermalaidInfoText,
   isMermaidAboutKeywordOnly,
 } from '../utils/mermalaidInfoText'
+import {
+  clampScaleToCanvasLimits,
+  DEFAULT_PNG_EXPORT_SCALE,
+  getPngOutputSize,
+  getSvgExportSize,
+  isValidPngExportScale,
+  PNG_EXPORT_SCALES,
+  PNG_SCALE_LABELS,
+  prepareDiagramPngMarkup,
+  rasterizeSvgToPngBlob,
+  type PngExportScale,
+  type SvgExportSize,
+} from '../utils/pngExport'
+import { getAppThemeCssVars } from '../utils/mermaidThemes'
 import Settings from './Settings'
+import ConfirmDialog from './ConfirmDialog'
 import AgentBridgePanel from './AgentBridgePanel'
 import { useAgentBridgeContext } from '../hooks/useAgentBridgeContext'
 import type { BridgeStatus } from '../agentBridge/bridgeClient'
@@ -60,6 +74,17 @@ import {
   requestPreviewSignature,
 } from '../utils/publicShareLink'
 import './Toolbar.css'
+
+const PNG_SCALE_STORAGE_KEY = 'mermalaid-png-export-scale'
+
+function readStoredPngScale(): PngExportScale {
+  try {
+    const stored = Number(localStorage.getItem(PNG_SCALE_STORAGE_KEY))
+    return isValidPngExportScale(stored) ? stored : DEFAULT_PNG_EXPORT_SCALE
+  } catch {
+    return DEFAULT_PNG_EXPORT_SCALE
+  }
+}
 
 /** Must cover compress (up to ~1.5s wall) + importKey + encrypt (each up to 2.5s) on slow devices. */
 const PRIVATE_LINK_ENCODE_TIMEOUT_MS = 10_000
@@ -210,6 +235,9 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
   const showMobileActions = showMobileActionsProp ?? showMobileActionsState
   const setShowMobileActions = setShowMobileActionsProp ?? setShowMobileActionsState
   const [isFixing, setIsFixing] = useState(false)
+  const [pngExportSize, setPngExportSize] = useState<SvgExportSize | null>(null)
+  const [pngExportScale, setPngExportScale] = useState<PngExportScale>(readStoredPngScale)
+  const [isExportingPng, setIsExportingPng] = useState(false)
   const [isCopyingPrivateLink, setIsCopyingPrivateLink] = useState(false)
   const [isCopyingPreviewLink, setIsCopyingPreviewLink] = useState(false)
   const hasMultipleBlocks = mermaidBlocks.length > 1
@@ -485,39 +513,70 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
     }
   }
 
-  const handleExportPNG = async () => {
-    const previewContainer = document.querySelector('.preview-content')
-    const svgElement = previewContainer?.querySelector('svg') as SVGSVGElement | null
+  const getPreviewSvg = (): SVGSVGElement | null =>
+    document.querySelector('.preview-content svg') as SVGSVGElement | null
 
-    if (!svgElement || !previewContainer) {
+  /** Opens the resolution chooser; the export runs from {@link runPngExport}. */
+  const handleExportPNG = () => {
+    const svgElement = getPreviewSvg()
+    const size = svgElement ? getSvgExportSize(svgElement) : null
+    if (!svgElement || !size) {
       showToast('No diagram to export', 'error')
       return
     }
+    setPngExportSize(size)
+  }
 
-    try {
-      const canvas = await html2canvas(previewContainer as HTMLElement, {
-        backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
-        scale: 2,
-        logging: false,
-        useCORS: true,
-        allowTaint: false,
-      } as any)
+  /** The same diagram with SVG `<text>` labels, for engines that cannot rasterize foreignObject. */
+  const renderPlainLabelSvg = () => {
+    const source = activeCode.trim()
+    const { code: diagramCode, config: blockConfig } = parseMermaidWithConfig(source)
+    return renderOfficialMermaidPreview(
+      diagramCode,
+      isDark,
+      blockConfig ? mapMermaidConfigToThemeOptions(blockConfig) : getMermaidThemeOptions(mermaidTheme),
+      parseMermaidConfigForOfficialRenderer(source),
+      { plainTextLabels: true },
+    )
+  }
 
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((b) => resolve(b), 'image/png')
-      })
-      if (!blob) {
-        showToast('Failed to generate PNG', 'error')
-        return
-      }
-
-      const result = await saveBlob(blob, PNG_EXPORT)
-      const toastMsg = toastMessageForSaveResult(result, 'Exported')
-      if (toastMsg) showToast(toastMsg)
-    } catch (err) {
-      console.error('PNG export error:', err)
-      showToast('Failed to export PNG: ' + (err instanceof Error ? err.message : 'Unknown error'), 'error')
+  const runPngExport = () => {
+    const svgElement = getPreviewSvg()
+    const size = pngExportSize
+    if (!svgElement || !size) {
+      showToast('No diagram to export', 'error')
+      setPngExportSize(null)
+      return
     }
+
+    setIsExportingPng(true)
+    void (async () => {
+      try {
+        const { markup, size: exportSize } = await prepareDiagramPngMarkup(
+          svgElement,
+          size,
+          renderPlainLabelSvg,
+        )
+        const blob = await rasterizeSvgToPngBlob(markup, {
+          size: exportSize,
+          scale: pngExportScale,
+          background: getAppThemeCssVars(mermaidTheme)['--app-bg'] ?? (isDark ? '#1e1e1e' : '#ffffff'),
+        })
+
+        const result = await saveBlob(blob, PNG_EXPORT)
+        setPngExportSize(null)
+        const toastMsg = toastMessageForSaveResult(result, 'Exported')
+        if (toastMsg) showToast(toastMsg)
+      } catch (err) {
+        console.error('PNG export error:', err)
+        showToast(
+          'Failed to export PNG: ' + (err instanceof Error ? err.message : 'Unknown error'),
+          'error',
+        )
+      } finally {
+        setIsExportingPng(false)
+      }
+    })()
   }
 
   const handleExportASCII = () => {
@@ -981,6 +1040,55 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
     </>
   )
 
+  const pngExportDialog = (
+    <ConfirmDialog
+      open={pngExportSize !== null}
+      title="Export PNG"
+      message="The whole diagram is exported at its full size. Pick how much detail to keep."
+      confirmLabel={isExportingPng ? 'Exporting…' : 'Export PNG'}
+      cancelLabel="Cancel"
+      busy={isExportingPng}
+      onConfirm={runPngExport}
+      onCancel={() => setPngExportSize(null)}
+    >
+      <fieldset className="png-export-options">
+        <legend className="png-export-legend">Resolution</legend>
+        {PNG_EXPORT_SCALES.map((scale) => {
+          const output = pngExportSize ? getPngOutputSize(pngExportSize, scale) : null
+          const limited =
+            pngExportSize !== null && clampScaleToCanvasLimits(pngExportSize, scale) < scale
+          return (
+            <label key={scale} className="png-export-option">
+              <input
+                type="radio"
+                name="png-export-scale"
+                value={scale}
+                checked={pngExportScale === scale}
+                disabled={isExportingPng}
+                onChange={() => {
+                  setPngExportScale(scale)
+                  try {
+                    localStorage.setItem(PNG_SCALE_STORAGE_KEY, String(scale))
+                  } catch {
+                    /* ignore blocked storage */
+                  }
+                }}
+              />
+              <span className="png-export-option-label">
+                {PNG_SCALE_LABELS[scale]} ({scale}×)
+              </span>
+              {output && (
+                <span className="png-export-option-size">
+                  {output.width} × {output.height} px{limited ? ' (limited)' : ''}
+                </span>
+              )}
+            </label>
+          )
+        })}
+      </fieldset>
+    </ConfirmDialog>
+  )
+
   return (
     <>
       <input
@@ -990,6 +1098,7 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
         onChange={handleFileChange}
         style={{ display: 'none' }}
       />
+      {pngExportDialog}
       {isMobile ? mobileToolbar : (
         <div className="toolbar">
           <div className="toolbar-section">

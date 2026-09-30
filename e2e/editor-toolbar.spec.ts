@@ -59,7 +59,7 @@ test.describe('Editor toolbar (web)', () => {
     await expect(page.locator('.app.app-theme-light')).toBeVisible()
   })
 
-  test('Ctrl+N opens another diagram tab and keeps a valid preview', async ({ page }) => {
+  test('Ctrl+N opens an empty tab offering both ways to fill it', async ({ page }) => {
     const tabs = page.getByRole('tablist', { name: 'Open diagrams' }).getByRole('tab')
     await expect(tabs).toHaveCount(1)
 
@@ -67,7 +67,8 @@ test.describe('Editor toolbar (web)', () => {
     await page.keyboard.press('Control+N')
 
     await expect(tabs).toHaveCount(2)
+    await expect(page.getByRole('button', { name: 'New diagram', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Open .mmd file…', exact: true })).toBeVisible()
     await expect(page.locator('.error-indicator')).toHaveCount(0)
-    await expect(page.locator('.preview-svg-host')).toBeVisible({ timeout: 30_000 })
   })
 })

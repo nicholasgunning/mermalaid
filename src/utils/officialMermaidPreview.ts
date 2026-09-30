@@ -77,13 +77,30 @@ function buildThemeVariablesFromBeautifulTheme(
   return vars
 }
 
+export interface OfficialMermaidRenderOptions {
+  /**
+   * Force plain SVG `<text>` labels instead of Mermaid's default HTML-in-`<foreignObject>`.
+   * PNG export needs this on engines that do not rasterize foreignObject content.
+   */
+  plainTextLabels?: boolean
+}
+
 function buildPreviewConfig(
   isDarkTheme: boolean,
   themeOptions: BeautifulMermaidThemeOptions | undefined,
   yamlConfig?: MermaidYamlConfig,
+  renderOptions?: OfficialMermaidRenderOptions,
 ): Parameters<typeof mermaid.initialize>[0] {
   const baseThemeVariables = buildThemeVariablesFromBeautifulTheme(themeOptions)
+  const plainLabels = renderOptions?.plainTextLabels
+    ? {
+        htmlLabels: false,
+        flowchart: { htmlLabels: false },
+        class: { htmlLabels: false },
+      }
+    : {}
   return {
+    ...plainLabels,
     startOnLoad: false,
     // User-authored diagrams often use <br/>, <i>, etc. in flowchart labels. `strict`
     // sanitizes/rewrites HTML aggressively and breaks many real-world graphs; `loose`
@@ -106,10 +123,11 @@ export async function renderOfficialMermaidPreview(
   isDarkTheme: boolean,
   themeOptions: BeautifulMermaidThemeOptions | undefined,
   yamlConfig?: MermaidYamlConfig,
+  renderOptions?: OfficialMermaidRenderOptions,
 ): Promise<string> {
   const run = renderQueue.then(async () => {
     renderCounter += 1
-    mermaid.initialize(buildPreviewConfig(isDarkTheme, themeOptions, yamlConfig))
+    mermaid.initialize(buildPreviewConfig(isDarkTheme, themeOptions, yamlConfig, renderOptions))
     const renderId = `mermalaid-preview-${renderCounter}`
     const { svg } = await mermaid.render(renderId, diagramCode)
     return svg

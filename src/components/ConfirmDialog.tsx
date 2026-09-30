@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import './ConfirmDialog.css'
 
 interface ConfirmDialogAction {
@@ -20,6 +20,8 @@ interface ConfirmDialogProps {
   extraAction?: ConfirmDialogAction
   /** Disables every button while the confirmed action is still running. */
   busy?: boolean
+  /** Extra controls between the message and the buttons (e.g. export options). */
+  children?: ReactNode
   onConfirm: () => void
   onCancel: () => void
 }
@@ -41,15 +43,20 @@ export default function ConfirmDialog({
   destructive = false,
   extraAction,
   busy = false,
+  children,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const confirmRef = useRef<HTMLButtonElement>(null)
 
-  // Focus the safe choice, so Enter/Space cannot discard work by accident.
+  // A destructive dialog focuses the safe choice, so Enter cannot discard work by accident;
+  // an ordinary one focuses its action, which is what the user came for.
   useEffect(() => {
-    if (open) cancelRef.current?.focus?.()
-  }, [open])
+    if (!open) return
+    const target = destructive ? cancelRef.current : confirmRef.current
+    target?.focus?.()
+  }, [open, destructive])
 
   useEffect(() => {
     if (!open || busy) return
@@ -81,6 +88,7 @@ export default function ConfirmDialog({
         <p className="confirm-dialog-message" id="confirm-dialog-message">
           {message}
         </p>
+        {children}
         <div className="confirm-dialog-actions">
           <button
             type="button"
@@ -103,6 +111,7 @@ export default function ConfirmDialog({
           )}
           <button
             type="button"
+            ref={confirmRef}
             className={`confirm-dialog-btn confirm-dialog-confirm ${destructive ? 'destructive' : ''}`}
             disabled={busy}
             aria-busy={busy}

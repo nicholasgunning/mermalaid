@@ -7,6 +7,7 @@ import {
   closeTab,
   createInitialState,
   DEFAULT_DIAGRAM_CODE,
+  EMPTY_DIAGRAM_CODE,
   getActiveTab,
   isTabDirty,
   NEW_DIAGRAM_CODE,
@@ -93,10 +94,49 @@ describe('documentTabs', () => {
     expect(nextUntitledName(state.tabs)).toBe('Untitled 2')
   })
 
-  it('opens a new tab with the empty-diagram seed and focuses it', () => {
+  it('opens a new tab empty and focuses it, so the tab can be filled either way', () => {
     const state = addTab(createInitialState())
     expect(state.tabs).toHaveLength(2)
+    expect(getActiveTab(state).code).toBe(EMPTY_DIAGRAM_CODE)
+    expect(isTabDirty(getActiveTab(state))).toBe(false)
+  })
+
+  it('fills the focused empty tab instead of opening another one', () => {
+    let state = openDocument(createInitialState(), { path: '/a.mmd', code: 'graph TD\n  A' })
+    state = addTab(state)
+    const emptyTabId = state.activeId
+
+    state = openDocument(state, { path: '/b.mmd', code: 'graph TD\n  B' })
+
+    expect(state.tabs).toHaveLength(2)
+    expect(state.activeId).toBe(emptyTabId)
+    expect(getActiveTab(state).path).toBe('/b.mmd')
+    // The other tab is untouched.
+    expect(state.tabs[0].path).toBe('/a.mmd')
+  })
+
+  it('keeps the empty tab’s own name when what it is filled with has none', () => {
+    let state = addTab(createInitialState())
+    expect(getActiveTab(state).name).toBe('Untitled 2')
+
+    state = openDocument(state, { code: NEW_DIAGRAM_CODE })
+    expect(getActiveTab(state).name).toBe('Untitled 2')
     expect(getActiveTab(state).code).toBe(NEW_DIAGRAM_CODE)
+    // A starter diagram is not unsaved work.
+    expect(isTabDirty(getActiveTab(state))).toBe(false)
+  })
+
+  it('leaves an empty tab alone when it is not the focused one', () => {
+    // The focused tab has work in it, so the open cannot take it over either.
+    let state = updateActiveTab(createInitialState(), { code: 'graph TD\n  mine' })
+    state = addTab(state)
+    const emptyTabId = state.activeId
+    state = activateTab(state, state.tabs[0].id)
+
+    state = openDocument(state, { path: '/b.mmd', code: 'graph TD\n  B' })
+
+    expect(state.tabs).toHaveLength(3)
+    expect(state.tabs.find((tab) => tab.id === emptyTabId)?.code).toBe(EMPTY_DIAGRAM_CODE)
   })
 
   it('focuses the right-hand neighbour when the active tab closes', () => {
@@ -125,7 +165,7 @@ describe('documentTabs', () => {
     const state = createInitialState()
     const next = closeTab(state, state.tabs[0].id)
     expect(next.tabs).toHaveLength(1)
-    expect(next.tabs[0].code).toBe(NEW_DIAGRAM_CODE)
+    expect(next.tabs[0].code).toBe(EMPTY_DIAGRAM_CODE)
     expect(next.activeId).toBe(next.tabs[0].id)
   })
 
