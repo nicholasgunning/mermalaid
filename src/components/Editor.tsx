@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import EditorComponent, { loader } from '@monaco-editor/react'
 import { useTheme } from '../hooks/useTheme'
 import { isAppThemeDark } from '../utils/mermaidThemes'
-import { MERMLAID_EDITOR_AUTOSAVE_DEBOUNCE_MS } from '../constants/mermalaidTiming'
 import type { MermaidBlock } from '../utils/mermaidCodeBlock'
 import './Editor.css'
 
@@ -120,7 +119,6 @@ export default function Editor({
   width,
 }: EditorProps) {
   const { mermaidTheme } = useTheme()
-  const debounceTimer = useRef<NodeJS.Timeout>()
   const editorRef = useRef<any>(null)
   const decorationIdsRef = useRef<string[]>([])
   /** Avoid scrolling on every keystroke: reveal block start only when selection or block list shape changes (issue #54). */
@@ -151,20 +149,6 @@ export default function Editor({
       const currentValue = editorRef.current.getValue()
       if (currentValue !== code) {
         editorRef.current.setValue(code)
-      }
-    }
-  }, [code])
-
-  useEffect(() => {
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current)
-    }
-    debounceTimer.current = setTimeout(() => {
-      localStorage.setItem('mermalaid-draft', code)
-    }, MERMLAID_EDITOR_AUTOSAVE_DEBOUNCE_MS)
-    return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current)
       }
     }
   }, [code])

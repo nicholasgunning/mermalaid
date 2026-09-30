@@ -74,6 +74,9 @@ code** links the two so that only your editor can be driven.
 A typical agent flow: `get_pairing_code` → tell the user → `wait_for_editor` → `get_syntax_reference` →
 `set_diagram` → `render_diagram` to check the result → iterate.
 
+With several diagram tabs open, "the current diagram" is always the focused tab: reads and writes
+follow whichever tab the user has selected, and switching tabs switches what the agent sees.
+
 ### Resource
 
 The current diagram is also exposed as an MCP **resource**, `mermalaid://diagram/current`

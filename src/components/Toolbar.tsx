@@ -40,6 +40,8 @@ import { useAgentBridgeContext } from '../hooks/useAgentBridgeContext'
 import type { BridgeStatus } from '../agentBridge/bridgeClient'
 import { rebuildNativeAppMenu } from '../nativeAppMenu'
 import { addRecentFile, recentFileLabel, removeRecentFile } from '../utils/recentFiles'
+import type { OpenDocumentInput } from '../utils/documentTabs'
+import { DIAGRAM_FILE_EXTENSIONS } from '../utils/diagramImportFiles'
 import { copyPlainTextWhenReady, formatClipboardFailureMessage } from '../utils/copyToClipboard'
 import { saveBlob, saveFileKind, toastMessageForSaveResult, type SaveFileAcceptType, type SaveFileFilter } from '../utils/saveFile'
 import {
@@ -88,7 +90,7 @@ function wait(ms: number): Promise<void> {
 }
 
 const OPEN_FILTERS: SaveFileFilter[] = [
-  { name: 'Mermaid / Text', extensions: ['mmd', 'txt', 'md', 'markdown'] },
+  { name: 'Mermaid / Text', extensions: [...DIAGRAM_FILE_EXTENSIONS] },
 ]
 
 const MERMAID_ACCEPT_TYPES: SaveFileAcceptType[] = [
@@ -135,6 +137,12 @@ interface ToolbarProps {
   documentPathRef: MutableRefObject<string | null>
   /** Updates both the path ref and the mirrored state that drives the external-file watcher. */
   setDocumentPath: (path: string | null) => void
+  /** Opens a document in its own tab (or focuses the tab already showing that path). */
+  openDocument: (input: OpenDocumentInput) => void
+  /** Adds an empty tab and focuses it — what New does now that documents are tabbed. */
+  newDocument: () => void
+  /** Renames the active tab; used when a browser save yields a file name but no path. */
+  setDocumentName: (name: string) => void
   /** Records content Mermalaid wrote to disk so its own save isn't seen as an external change. */
   onDocumentSaved?: (content: string) => void
   isMobile?: boolean
@@ -183,6 +191,9 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
   mermaidBlocks,
   documentPathRef,
   setDocumentPath,
+  openDocument,
+  newDocument,
+  setDocumentName,
   onDocumentSaved,
   isMobile = false,
   showMobileActions: showMobileActionsProp,
@@ -231,24 +242,26 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
     showToast('Unable to open file dialog. Please try again.', 'error')
   }
 
+  /** New opens another tab, so nothing has to be discarded to start a second diagram. */
   const handleNew = () => {
-    if (confirm('Create a new diagram? Unsaved changes will be lost.')) {
-      setCode('graph TD\n    A[Start] --> B[End]')
-      setDocumentPath(null)
-    }
+    newDocument()
   }
 
   const handleOpen = async () => {
     if (isTauri()) {
       try {
         const selected = await open({
-          multiple: false,
+          multiple: true,
           directory: false,
           filters: OPEN_FILTERS,
         })
-        const path = Array.isArray(selected) ? selected[0] : selected
-        if (!path || typeof path !== 'string') return
-        await openPath(path)
+        const paths = (Array.isArray(selected) ? selected : [selected]).filter(
+          (path): path is string => typeof path === 'string' && path.length > 0,
+        )
+        // Each selected file gets its own tab; the last one ends up focused.
+        for (const path of paths) {
+          await openPath(path)
+        }
       } catch (err) {
         console.error('Open dialog error:', err)
         // Some desktop/web hybrid contexts can report Tauri=true but fail to open native dialog.
@@ -269,8 +282,7 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
     if (!isTauri()) return
     try {
       const content = await readTextFile(path)
-      setCode(content)
-      setDocumentPath(path)
+      openDocument({ path, code: content })
       addRecentFile(path)
       await rebuildNativeAppMenu()
       showToast(`Loaded ${recentFileLabel(path)}`)
@@ -308,7 +320,8 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
       try {
         const content = event.target?.result as string
         if (content) {
-          setCode(content)
+          // Browsers give no path, so the tab is labelled with the picked file's name.
+          openDocument({ code: content, name: file.name })
           showToast(`Loaded ${file.name}`)
         } else {
           showToast('File appears to be empty.', 'error')
@@ -347,13 +360,14 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
         acceptTypes: MERMAID_ACCEPT_TYPES,
       })
       if (result.outcome === 'cancelled') return
-      if (result.outcome === 'saved') {
-        onDocumentSaved?.(code)
-        if (result.path) {
-          setDocumentPath(result.path)
-          addRecentFile(result.path)
-          await rebuildNativeAppMenu()
-        }
+      // A browser download is a save too — it just leaves no path to write back to.
+      onDocumentSaved?.(code)
+      if (result.outcome === 'saved' && result.path) {
+        setDocumentPath(result.path)
+        addRecentFile(result.path)
+        await rebuildNativeAppMenu()
+      } else {
+        setDocumentName(result.fileName)
       }
       const toastMsg = toastMessageForSaveResult(result, 'Saved')
       if (toastMsg) showToast(toastMsg)

@@ -17,6 +17,10 @@ export type NativeMenuHandlers = {
   onPrint: () => void
   onShare: () => void
   onDuplicate: () => void
+  onNewTab: () => void
+  onCloseTab: () => void
+  onNextTab: () => void
+  onPreviousTab: () => void
   onEngineVersion: () => void
   onShowLicense: () => void
   onOpenRecent: (path: string) => void
@@ -30,6 +34,10 @@ let getHandlers: () => NativeMenuHandlers = () => ({
   onPrint: () => {},
   onShare: () => {},
   onDuplicate: () => {},
+  onNewTab: () => {},
+  onCloseTab: () => {},
+  onNextTab: () => {},
+  onPreviousTab: () => {},
   onEngineVersion: () => {},
   onShowLicense: () => {},
   onOpenRecent: () => {},
@@ -199,10 +207,25 @@ async function buildAndSetAppMenu(): Promise<void> {
         id: 'file_new_tab',
         text: 'New Tab',
         accelerator: 'CmdOrCtrl+T',
-        enabled: false,
+        action: () => getHandlers().onNewTab(),
+      }),
+      await MenuItem.new({
+        id: 'file_close_tab',
+        text: 'Close Tab',
+        accelerator: 'CmdOrCtrl+W',
+        action: () => getHandlers().onCloseTab(),
       }),
       await PredefinedMenuItem.new({ item: 'Separator' }),
-      await PredefinedMenuItem.new({ item: 'CloseWindow' }),
+      await MenuItem.new({
+        id: 'file_close_window',
+        text: 'Close Window',
+        accelerator: 'Shift+CmdOrCtrl+W',
+        action: () => {
+          runMenuAction('Close Window', async () => {
+            await getCurrentWindow().close()
+          })
+        },
+      }),
     ],
   })
 
@@ -337,6 +360,19 @@ async function buildAndSetAppMenu(): Promise<void> {
         },
       }),
       windowHideShowItem,
+      await PredefinedMenuItem.new({ item: 'Separator' }),
+      await MenuItem.new({
+        id: 'window_next_tab',
+        text: 'Show Next Tab',
+        accelerator: 'Control+Tab',
+        action: () => getHandlers().onNextTab(),
+      }),
+      await MenuItem.new({
+        id: 'window_previous_tab',
+        text: 'Show Previous Tab',
+        accelerator: 'Control+Shift+Tab',
+        action: () => getHandlers().onPreviousTab(),
+      }),
     ],
   })
 

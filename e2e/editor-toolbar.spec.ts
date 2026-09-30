@@ -59,9 +59,14 @@ test.describe('Editor toolbar (web)', () => {
     await expect(page.locator('.app.app-theme-light')).toBeVisible()
   })
 
-  test('Ctrl+N confirms and keeps a valid preview', async ({ page }) => {
-    page.once('dialog', (d) => d.accept())
+  test('Ctrl+N opens another diagram tab and keeps a valid preview', async ({ page }) => {
+    const tabs = page.getByRole('tablist', { name: 'Open diagrams' }).getByRole('tab')
+    await expect(tabs).toHaveCount(1)
+
+    // Nothing is discarded any more, so New needs no confirmation.
     await page.keyboard.press('Control+N')
+
+    await expect(tabs).toHaveCount(2)
     await expect(page.locator('.error-indicator')).toHaveCount(0)
     await expect(page.locator('.preview-svg-host')).toBeVisible({ timeout: 30_000 })
   })

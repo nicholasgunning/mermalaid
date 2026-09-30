@@ -12,6 +12,11 @@ interface UseExternalFileWatchParams {
   documentPath: string | null
   code: string
   setCode: (code: string) => void
+  /**
+   * Called with disk content whenever it is applied to the editor, so the caller can treat the
+   * document as saved again (the reloaded text *is* what is on disk).
+   */
+  onReloaded?: (content: string) => void
 }
 
 export interface ExternalFileWatchApi {
@@ -28,10 +33,12 @@ export function useExternalFileWatch({
   documentPath,
   code,
   setCode,
+  onReloaded,
 }: UseExternalFileWatchParams): ExternalFileWatchApi {
   const { showToast } = useToast()
   const codeRef = useRef(code)
   const setCodeRef = useRef(setCode)
+  const onReloadedRef = useRef(onReloaded)
   const showToastRef = useRef(showToast)
   const lastDiskRef = useRef<string | null>(null)
 
@@ -41,6 +48,9 @@ export function useExternalFileWatch({
   useEffect(() => {
     setCodeRef.current = setCode
   }, [setCode])
+  useEffect(() => {
+    onReloadedRef.current = onReloaded
+  }, [onReloaded])
   useEffect(() => {
     showToastRef.current = showToast
   }, [showToast])
@@ -70,6 +80,7 @@ export function useExternalFileWatch({
       lastDiskRef.current = disk
       if (decision.action === 'reload') {
         setCodeRef.current(decision.content)
+        onReloadedRef.current?.(decision.content)
         showToastRef.current('Reloaded from external change')
       } else if (decision.action === 'conflict') {
         showToastRef.current('File changed on disk — you have unsaved changes here', 'error')

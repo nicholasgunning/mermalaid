@@ -33,8 +33,24 @@ vi.mock('./utils/privateUrlShare', async () => {
 
 vi.mock('@monaco-editor/react', () => ({
   __esModule: true,
-  default: function MonacoEditorMock({ value }: { value?: string }) {
-    return <div data-testid="monaco-editor-mock">{value}</div>
+  default: function MonacoEditorMock({
+    value,
+    onChange,
+  }: {
+    value?: string
+    onChange?: (value: string) => void
+  }) {
+    return (
+      <>
+        <div data-testid="monaco-editor-mock">{value}</div>
+        {/* Editable stand-in so tests can change a document the way typing would. */}
+        <textarea
+          data-testid="monaco-editor-input"
+          value={value ?? ''}
+          onChange={(event) => onChange?.(event.target.value)}
+        />
+      </>
+    )
   },
   loader: {
     init: async () => ({
@@ -142,6 +158,142 @@ describe('App (web)', () => {
       expect(queries.getByRole('button', { name: 'Copy Code' })).toBeInTheDocument()
       expect(queries.getByRole('button', { name: 'SVG' })).toBeInTheDocument()
       expect(queries.getByLabelText('Theme')).toBeInTheDocument()
+    })
+  })
+
+  it('opens a second diagram tab and keeps each tab’s code separate', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <MemoryRouter initialEntries={['/editor']}>
+        <App />
+      </MemoryRouter>,
+    )
+    const queries = within(container)
+
+    const tabList = await waitFor(() => queries.getByRole('tablist', { name: 'Open diagrams' }))
+    expect(within(tabList).getAllByRole('tab')).toHaveLength(1)
+
+    await user.click(queries.getByRole('button', { name: 'New' }))
+
+    await waitFor(() => {
+      expect(within(tabList).getAllByRole('tab')).toHaveLength(2)
+      expect(within(tabList).getByRole('tab', { name: 'Untitled 2' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      // The new tab starts from the empty-diagram seed, not the first tab's content.
+      expect(queries.getByTestId('monaco-editor-mock')).toHaveTextContent('A[Start] --> B[End]')
+    })
+
+    await user.click(within(tabList).getByRole('tab', { name: 'Untitled 1' }))
+
+    await waitFor(() => {
+      expect(queries.getByTestId('monaco-editor-mock')).toHaveTextContent('B{Decision}')
+    })
+  })
+
+  it('closes a diagram tab from the tab bar', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <MemoryRouter initialEntries={['/editor']}>
+        <App />
+      </MemoryRouter>,
+    )
+    const queries = within(container)
+
+    await waitFor(() => expect(queries.getByRole('button', { name: 'New' })).toBeInTheDocument())
+    await user.click(queries.getByRole('button', { name: 'New' }))
+
+    const tabList = queries.getByRole('tablist', { name: 'Open diagrams' })
+    await waitFor(() => expect(within(tabList).getAllByRole('tab')).toHaveLength(2))
+
+    await user.click(queries.getByRole('button', { name: 'Close Untitled 2' }))
+
+    await waitFor(() => {
+      expect(within(tabList).getAllByRole('tab')).toHaveLength(1)
+      expect(within(tabList).getByRole('tab', { name: 'Untitled 1' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+    })
+  })
+
+  it('only closes a tab with unsaved changes once that is confirmed', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <MemoryRouter initialEntries={['/editor']}>
+        <App />
+      </MemoryRouter>,
+    )
+    const queries = within(container)
+
+    await waitFor(() => expect(queries.getByRole('button', { name: 'New' })).toBeInTheDocument())
+    await user.click(queries.getByRole('button', { name: 'New' }))
+
+    const tabList = queries.getByRole('tablist', { name: 'Open diagrams' })
+    await waitFor(() => expect(within(tabList).getAllByRole('tab')).toHaveLength(2))
+
+    await user.type(queries.getByTestId('monaco-editor-input'), '\n%% unsaved work')
+    await waitFor(() =>
+      expect(within(tabList).getByRole('tab', { name: /unsaved changes/i })).toBeInTheDocument(),
+    )
+
+    // Cancelling leaves the tab and its edits exactly where they were.
+    await user.click(queries.getByRole('button', { name: 'Close Untitled 2' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Unsaved changes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Keep editing' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Unsaved changes' })).not.toBeInTheDocument()
+    })
+    expect(within(tabList).getAllByRole('tab')).toHaveLength(2)
+    expect(queries.getByTestId('monaco-editor-mock')).toHaveTextContent('unsaved work')
+
+    // Confirming discards them.
+    await user.click(queries.getByRole('button', { name: 'Close Untitled 2' }))
+    const reopened = await screen.findByRole('dialog', { name: 'Unsaved changes' })
+    await user.click(within(reopened).getByRole('button', { name: 'Close without saving' }))
+
+    await waitFor(() => {
+      expect(within(tabList).getAllByRole('tab')).toHaveLength(1)
+      expect(queries.getByTestId('monaco-editor-mock')).toHaveTextContent('B{Decision}')
+    })
+  })
+
+  it('restores every open tab after a reload', async () => {
+    const user = userEvent.setup()
+    const first = render(
+      <MemoryRouter initialEntries={['/editor']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() =>
+      expect(within(first.container).getByRole('button', { name: 'New' })).toBeInTheDocument(),
+    )
+    await user.click(within(first.container).getByRole('button', { name: 'New' }))
+    await waitFor(() =>
+      expect(
+        within(within(first.container).getByRole('tablist', { name: 'Open diagrams' })).getAllByRole(
+          'tab',
+        ),
+      ).toHaveLength(2),
+    )
+
+    // Autosave is debounced; give it time before tearing the app down.
+    await waitFor(() => expect(localStorage.getItem('mermalaid-tabs')).toBeTruthy())
+    cleanup()
+
+    const second = render(
+      <MemoryRouter initialEntries={['/editor']}>
+        <App />
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      const tabs = within(
+        within(second.container).getByRole('tablist', { name: 'Open diagrams' }),
+      ).getAllByRole('tab')
+      expect(tabs.map((tab) => tab.textContent)).toEqual(['Untitled 1', 'Untitled 2'])
     })
   })
 

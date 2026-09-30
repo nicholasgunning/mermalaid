@@ -13,14 +13,21 @@ import Editor from './components/Editor'
 import Preview from './components/Preview'
 import PanelDivider from './components/PanelDivider'
 import Toolbar, { type ToolbarRef } from './components/Toolbar'
+import TabBar from './components/TabBar'
+import ConfirmDialog from './components/ConfirmDialog'
 import LandingPage from './components/LandingPage'
 import SlackLandingPage from './components/SlackLandingPage'
 import UpdateAvailableBanner from './components/UpdateAvailableBanner'
 import { useAgentBridge } from './hooks/useAgentBridge'
 import { AgentBridgeProvider } from './contexts/AgentBridgeContext'
 import { useExternalFileWatch } from './hooks/useExternalFileWatch'
+import { useDocumentTabs } from './hooks/useDocumentTabs'
+import { formatUnsavedTabList, useUnsavedWindowClose } from './hooks/useUnsavedWindowClose'
 import type { LatestReleaseInfo } from './utils/githubRelease'
 import { isDiagramImportFileName } from './utils/diagramImportFiles'
+import { tabTitle } from './utils/documentTabs'
+import { addRecentFile } from './utils/recentFiles'
+import type { SavedTabRecord } from './utils/saveAllUnsavedTabs'
 import {
   clearUrlFragment,
   decodePrivateShareHash,
@@ -156,40 +163,81 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
   const isSmartphoneLayout = useIsSmartphoneLayout()
   useVisualViewportCssVars(isSmartphoneLayout)
   const isKeyboardOpen = useIsKeyboardOpen(isSmartphoneLayout)
-  const [code, setCode] = useState('graph TD\n    A[Start] --> B{Decision}\n    B -->|Yes| C[Action 1]\n    B -->|No| D[Action 2]\n    C --> E[End]\n    D --> E')
+  // Every open `.mmd` document lives here; the editor, preview and toolbar all act on the
+  // focused tab, so the rest of this view still works against a single `code`/`setCode` pair.
+  const documents = useDocumentTabs()
+  const activeTab = documents.activeTab
+  const code = activeTab.code
+  const setCode = documents.setActiveCode
   const [error, setError] = useState<string | null>(null)
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false)
   const [editorWidth, setEditorWidth] = useEditorWidth()
   const [containerWidth, setContainerWidth] = useState(viewportWidth)
   const [mobileWorkspacePanel, setMobileWorkspacePanel] = useState<MobileWorkspacePanel>('preview')
-  const [selectedBlockIndex, setSelectedBlockIndex] = useState(0)
-  const documentPathRef = useRef<string | null>(null)
-  // Mirror the document path into state so the external-file watcher can react to it.
-  const [documentPath, setDocumentPathState] = useState<string | null>(null)
-  const setDocumentPath = useCallback((path: string | null) => {
-    documentPathRef.current = path
-    setDocumentPathState(path)
-  }, [])
+  const documentPath = activeTab.path
+  const documentPathRef = documents.activePathRef
+  const setDocumentPath = documents.setActivePath
   const appContentRef = useRef<HTMLDivElement>(null)
   const toolbarRef = useRef<ToolbarRef>(null)
   const agentBridge = useAgentBridge({ code, setCode, error })
-  const { markSaved: markDocumentSaved } = useExternalFileWatch({ documentPath, code, setCode })
+  const { markSaved: markDocumentSaved } = useExternalFileWatch({
+    documentPath,
+    code,
+    setCode,
+    onReloaded: documents.markActiveSaved,
+  })
+
+  /** A save is the one moment both the tab's unsaved marker and the watcher must be reset. */
+  const handleDocumentSaved = useCallback(
+    (content: string) => {
+      markDocumentSaved(content)
+      documents.markActiveSaved(content)
+    },
+    [markDocumentSaved, documents.markActiveSaved],
+  )
+
+  const handleTabSavedOnClose = useCallback(
+    ({ id, content, path }: SavedTabRecord) => {
+      documents.markTabSaved(id, content, path)
+      addRecentFile(path)
+    },
+    [documents.markTabSaved],
+  )
+
+  /** Desktop: the window itself must not close unsaved work (every tab, not just this one). */
+  const windowClose = useUnsavedWindowClose({
+    unsavedTabs: documents.unsavedTabs,
+    onTabSaved: handleTabSavedOnClose,
+  })
+
+  // A stale syntax error from the previous document would otherwise flash on the new one.
+  useEffect(() => {
+    setError(null)
+  }, [documents.activeId])
 
   // Compute mermaid blocks from the code
   const mermaidBlocks = extractAllMermaidBlocks(code)
   const hasMultipleBlocks = mermaidBlocks.length > 1
+  // The tab remembers its block, which a later edit (or a restored session) can put out of range.
+  const selectedBlockIndex = Math.min(
+    activeTab.selectedBlockIndex,
+    Math.max(0, mermaidBlocks.length - 1),
+  )
+  const setSelectedBlockIndex = documents.setActiveSelectedBlockIndex
   const activeCode = hasMultipleBlocks
     ? (mermaidBlocks[selectedBlockIndex]?.code ?? '')
     : extractMermaidCode(code)
 
-  // Reset block index when block count changes
-  const prevBlockCount = useRef(mermaidBlocks.length)
+  // Reset the block index when this document's block count changes — but not when the count
+  // changes because another tab was focused, since each tab keeps its own selection.
+  const prevBlocks = useRef({ tabId: documents.activeId, count: mermaidBlocks.length })
   useEffect(() => {
-    if (mermaidBlocks.length !== prevBlockCount.current) {
-      prevBlockCount.current = mermaidBlocks.length
+    const prev = prevBlocks.current
+    prevBlocks.current = { tabId: documents.activeId, count: mermaidBlocks.length }
+    if (prev.tabId === documents.activeId && prev.count !== mermaidBlocks.length) {
       setSelectedBlockIndex(0)
     }
-  }, [mermaidBlocks.length])
+  }, [documents.activeId, mermaidBlocks.length, setSelectedBlockIndex])
 
   // Track the live width of the split row so we can clamp the applied editor width without
   // ever mutating the user's saved preference (they keep their wide layout after a shrink).
@@ -208,14 +256,6 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
     try { localStorage.setItem('mermalaid-has-used-editor', '1') } catch {}
   })
 
-  /** Draft only when the first paint is not a private share URL (share handling is hash-subscribed below). */
-  useMountEffect(() => {
-    if (isTauri()) return
-    if (isPrivateShareHash(window.location.hash)) return
-    const saved = localStorage.getItem('mermalaid-draft')
-    if (saved) setCode(saved)
-  })
-
   /** Web: react to private `#v1…` on load and when the hash changes while staying on /editor. */
   useEffect(() => {
     if (isTauri()) return
@@ -227,23 +267,21 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
       try {
         const state = await decodePrivateShareHash(hash)
         if (cancelled) return
-        setCode(state.code)
-        setDocumentPath(null)
+        // Its own tab, so a restored session is never overwritten by a link.
+        documents.openDocument({ code: state.code, name: 'Shared diagram' })
         clearUrlFragment()
         showToast('Opened diagram from private link')
       } catch (e) {
         if (cancelled) return
         showToast(getPrivateShareErrorMessage(e), 'error')
         clearUrlFragment()
-        const saved = localStorage.getItem('mermalaid-draft')
-        if (saved) setCode(saved)
       }
     })()
 
     return () => {
       cancelled = true
     }
-  }, [location.hash, showToast])
+  }, [location.hash, showToast, documents.openDocument])
 
   /** Web: open a diagram from a public preview link (`/editor?c=…`). */
   useEffect(() => {
@@ -256,8 +294,7 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
       try {
         const source = await decodePublicDiagram(c)
         if (cancelled) return
-        setCode(source)
-        documentPathRef.current = null
+        documents.openDocument({ code: source, name: 'Shared diagram' })
         // Strip the param so it doesn't linger or re-trigger.
         window.history.replaceState(null, '', location.pathname)
         showToast('Opened diagram from shared link')
@@ -271,7 +308,7 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
     return () => {
       cancelled = true
     }
-  }, [location.search, showToast])
+  }, [location.search, showToast, documents.openDocument])
 
   /** Finder / Explorer / argv: open the requested file instead of restoring draft (issue #41). */
   useMountEffect(() => {
@@ -282,8 +319,7 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
       if (!isPrivateShareHash(hash)) return 'none'
       try {
         const state = await decodePrivateShareHash(hash)
-        setCode(state.code)
-        setDocumentPath(null)
+        documents.openDocument({ code: state.code, name: 'Shared diagram' })
         clearUrlFragment()
         showToast('Opened diagram from private link')
         return 'loaded'
@@ -303,16 +339,14 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
       return true
     }
 
-    const restoreDraftIfNoOsFile = async () => {
+    const openStartupDocuments = async () => {
       const shareOutcome = await tryConsumePrivateShareHash()
       if (shareOutcome === 'loaded') return
-      const opened = await openQueuedPaths()
-      if (opened) return
-      const saved = localStorage.getItem('mermalaid-draft')
-      if (saved) setCode(saved)
+      // Restored tabs are already open; files the OS handed us are added alongside them.
+      await openQueuedPaths()
     }
 
-    void restoreDraftIfNoOsFile()
+    void openStartupDocuments()
 
     let unlisten: (() => void) | undefined
     void listen('open-files', () => {
@@ -328,19 +362,42 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
 
   useMountEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      const mod = e.metaKey || e.ctrlKey
+      // Shift (and caps lock) report the letter uppercase, so compare case-insensitively —
+      // otherwise Save As (⇧⌘S) would never match.
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+      if (mod && key === 'n') {
         e.preventDefault()
         toolbarRef.current?.handleNew()
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'o') {
+      } else if (mod && key === 'o') {
         e.preventDefault()
         void toolbarRef.current?.handleOpen()
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      } else if (mod && key === 's') {
         e.preventDefault()
         if (e.shiftKey) {
           void toolbarRef.current?.handleSaveAs()
         } else {
           void toolbarRef.current?.handleSave()
         }
+      } else if (mod && !isTauri() && key === 't') {
+        // Desktop routes ⌘T/⌘W/⌃Tab through the native menu accelerators (see nativeAppMenu.ts),
+        // so they are only bound here for the web app, where the browser may still claim them.
+        e.preventDefault()
+        documents.newTab()
+      } else if (mod && !isTauri() && key === 'w') {
+        e.preventDefault()
+        documents.closeActiveTab()
+      } else if (e.ctrlKey && !isTauri() && key === 'Tab') {
+        e.preventDefault()
+        documents.selectRelativeTab(e.shiftKey ? -1 : 1)
+      } else if (mod && e.altKey && (key === 'ArrowRight' || key === 'ArrowLeft')) {
+        e.preventDefault()
+        documents.selectRelativeTab(key === 'ArrowRight' ? 1 : -1)
+      } else if (mod && !e.altKey && /^[1-9]$/.test(key)) {
+        // ⌘9 jumps to the last tab, as in browsers and editors.
+        e.preventDefault()
+        const digit = Number.parseInt(key, 10)
+        documents.selectTabAtIndex(digit === 9 ? Number.MAX_SAFE_INTEGER : digit - 1)
       }
     }
 
@@ -358,6 +415,10 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
       onPrint: () => toolbarRef.current?.handlePrint(),
       onShare: () => void toolbarRef.current?.handleShare(),
       onDuplicate: () => void toolbarRef.current?.handleDuplicate(),
+      onNewTab: () => documents.newTab(),
+      onCloseTab: () => documents.closeActiveTab(),
+      onNextTab: () => documents.selectRelativeTab(1),
+      onPreviousTab: () => documents.selectRelativeTab(-1),
       onEngineVersion: () => toolbarRef.current?.handleEngineVersionInfo(),
       onShowLicense: () => toolbarRef.current?.handleShowLicenseInfo(),
       onOpenRecent: (path) => void toolbarRef.current?.openPath(path),
@@ -367,17 +428,22 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
-    const file = e.dataTransfer.files[0]
-    if (!file || !isDiagramImportFileName(file.name)) {
-      return
-    }
+    const files = Array.from(e.dataTransfer.files).filter((file) =>
+      isDiagramImportFileName(file.name),
+    )
+    if (files.length === 0) return
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const content = event.target?.result as string
-      setCode(content)
+    // Each dropped diagram opens in its own tab; browsers expose no path, so use the file name.
+    for (const file of files) {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const content = event.target?.result as string
+        if (typeof content === 'string') {
+          documents.openDocument({ code: content, name: file.name })
+        }
+      }
+      reader.readAsText(file)
     }
-    reader.readAsText(file)
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -413,8 +479,52 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
         mermaidBlocks={mermaidBlocks}
         documentPathRef={documentPathRef}
         setDocumentPath={setDocumentPath}
-        onDocumentSaved={markDocumentSaved}
+        openDocument={documents.openDocument}
+        newDocument={documents.newTab}
+        setDocumentName={documents.setActiveName}
+        onDocumentSaved={handleDocumentSaved}
         isMobile={isSmartphoneLayout}
+      />
+      <TabBar
+        tabs={documents.tabs}
+        activeId={documents.activeId}
+        onSelect={documents.selectTab}
+        onClose={documents.closeTab}
+        onNew={documents.newTab}
+        onSelectRelative={documents.selectRelativeTab}
+      />
+      <ConfirmDialog
+        open={documents.pendingCloseTab !== null && !windowClose.isAsking}
+        title="Unsaved changes"
+        message={
+          documents.pendingCloseTab
+            ? `${tabTitle(documents.pendingCloseTab)} has changes that have not been saved. Closing this tab discards them.`
+            : ''
+        }
+        confirmLabel="Close without saving"
+        cancelLabel="Keep editing"
+        destructive
+        onConfirm={documents.confirmPendingClose}
+        onCancel={documents.cancelPendingClose}
+      />
+      <ConfirmDialog
+        open={windowClose.isAsking}
+        title="Unsaved changes"
+        message={
+          documents.unsavedTabs.length === 1
+            ? `${formatUnsavedTabList(documents.unsavedTabs)} has changes that have not been saved.`
+            : `${documents.unsavedTabs.length} diagrams have changes that have not been saved: ${formatUnsavedTabList(documents.unsavedTabs)}.`
+        }
+        confirmLabel={windowClose.isSaving ? 'Saving…' : 'Save all and close'}
+        cancelLabel="Cancel"
+        busy={windowClose.isSaving}
+        extraAction={{
+          label: 'Close without saving',
+          destructive: true,
+          onClick: windowClose.closeWithoutSaving,
+        }}
+        onConfirm={windowClose.saveAllAndClose}
+        onCancel={windowClose.cancelClose}
       />
       <div className="app-content" ref={appContentRef}>
         {showEditorPanel && (

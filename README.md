@@ -53,7 +53,9 @@ Mermalaid includes the features teams usually pay for, while staying free to use
 
 ### File Management
 
-- **Open Files** - Import `.mmd`, `.txt`, or `.md` files
+- **Multiple Diagram Tabs** - Keep several `.mmd` documents open at once and switch between them; unsaved tabs are marked, and the whole set of tabs is restored on your next visit
+- **Unsaved-Change Guards** - Closing a tab with unsaved edits asks first, and on the desktop app closing the window offers to save every unsaved diagram before it goes
+- **Open Files** - Import `.mmd`, `.txt`, or `.md` files (pick or drop several at once — each opens in its own tab)
 - **Live Reload (desktop)** - Edit the open file in any external editor; Mermalaid re-renders on save
 - **Save Diagrams** - Export Mermaid diagrams to local files
 - **Export Options**:
@@ -225,9 +227,16 @@ The installer is unsigned, so SmartScreen shows "Windows protected your PC" when
 
 ## ⌨️ Keyboard Shortcuts
 
-- `⌘N` (Mac) / `Ctrl+N` (Windows/Linux): New diagram
-- `⌘O` / `Ctrl+O`: Open file
+- `⌘N` (Mac) / `Ctrl+N` (Windows/Linux): New diagram (opens a new tab)
+- `⌘O` / `Ctrl+O`: Open file (in its own tab)
 - `⌘S` / `Ctrl+S`: Save file
+- `⌘T` / `Ctrl+T`: New tab
+- `⌘W` / `Ctrl+W`: Close tab (`⇧⌘W` closes the window)
+- `⌃Tab` / `⌃⇧Tab`: Next / previous tab
+- `⌘1`…`⌘9`: Jump to tab (`⌘9` is the last tab)
+
+Browsers reserve some of these for their own tabs, so `⌘T`, `⌘W`, `⌃Tab` and `⌘1`…`⌘9` are
+desktop-app shortcuts; on the web use the tab bar, or `⌘⌥←` / `⌘⌥→` to step between tabs.
 
 ## 🤝 Contributing
 
@@ -278,6 +287,7 @@ Because this license includes a non-commercial clause, Mermalaid is source-avail
 | **Cost** | ✅ 100% Free | ❌ Free tier with limits, paid for unlimited |
 | **Source-available** | ✅ Yes (CC BY-NC-SA 4.0, non-commercial) | ❌ Usually closed source |
 | **Document Limits** | ✅ Unlimited | ❌ Often 3-5 documents max |
+| **Multiple Open Documents** | ✅ Tabbed, session restored | ✅/❌ Varies |
 | **Sign-Up Required** | ✅ No | ❌ Usually required |
 | **Privacy** | ✅ Local storage only | ❌ Cloud sync required |
 | **Export Options** | ✅ SVG, PNG, ASCII | ✅/❌ Varies |
