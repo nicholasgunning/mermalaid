@@ -179,6 +179,24 @@ export function closeTab(state: DiagramTabsState, id: string): DiagramTabsState 
   return { tabs, activeId: next.id }
 }
 
+/**
+ * Move `id` to `toIndex` in the strip — the drag-to-reorder operation.
+ *
+ * Out-of-range targets clamp to the ends, and focus is left alone: dragging a background tab
+ * reorders without stealing focus from the one being edited.
+ */
+export function moveTab(state: DiagramTabsState, id: string, toIndex: number): DiagramTabsState {
+  const from = state.tabs.findIndex((tab) => tab.id === id)
+  if (from === -1) return state
+  const to = Math.max(0, Math.min(toIndex, state.tabs.length - 1))
+  if (to === from) return state
+
+  const tabs = [...state.tabs]
+  const [moved] = tabs.splice(from, 1)
+  tabs.splice(to, 0, moved)
+  return { ...state, tabs }
+}
+
 export function activateTab(state: DiagramTabsState, id: string): DiagramTabsState {
   if (!state.tabs.some((tab) => tab.id === id)) return state
   return { ...state, activeId: id }

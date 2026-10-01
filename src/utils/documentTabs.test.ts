@@ -10,6 +10,7 @@ import {
   EMPTY_DIAGRAM_CODE,
   getActiveTab,
   isTabDirty,
+  moveTab,
   NEW_DIAGRAM_CODE,
   nextUntitledName,
   openDocument,
@@ -190,6 +191,31 @@ describe('documentTabs', () => {
     expect(activateTabAtIndex(state, 1).activeId).toBe(state.tabs[1].id)
     expect(activateTabAtIndex(state, 99).activeId).toBe(state.tabs[2].id)
     expect(activateTabAtIndex(state, -1)).toBe(state)
+  })
+
+  it('moves a tab to another position without changing which one is focused', () => {
+    const state = threeTabs()
+    const [a, b, c] = state.tabs
+
+    const toFront = moveTab(state, c.id, 0)
+    expect(toFront.tabs.map((tab) => tab.id)).toEqual([c.id, a.id, b.id])
+    expect(toFront.activeId).toBe(state.activeId)
+
+    expect(moveTab(state, a.id, 1).tabs.map((tab) => tab.id)).toEqual([b.id, a.id, c.id])
+  })
+
+  it('clamps out-of-range moves and ignores no-ops', () => {
+    const state = threeTabs()
+    const [a, , c] = state.tabs
+
+    expect(moveTab(state, a.id, 99).tabs.map((tab) => tab.id)).toEqual([
+      state.tabs[1].id,
+      c.id,
+      a.id,
+    ])
+    expect(moveTab(state, c.id, -5).tabs[0].id).toBe(c.id)
+    expect(moveTab(state, a.id, 0)).toBe(state)
+    expect(moveTab(state, 'nope', 0)).toBe(state)
   })
 
   it('round-trips the workspace through storage', () => {

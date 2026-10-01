@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 /**
- * README: keyboard shortcuts (⌘/Ctrl+N), Save, SVG/ASCII export, Copy Code, themes.
+ * README: keyboard shortcuts (⌘/Ctrl+N), Save, SVG export, Copy Code, themes.
  * Runs against web build only (no Tauri dialogs).
  */
 test.describe('Editor toolbar (web)', () => {
@@ -41,15 +41,6 @@ test.describe('Editor toolbar (web)', () => {
     ])
     expect(download.suggestedFilename()).toBe('diagram.svg')
     await expect(page.getByText('Exported diagram.svg')).toBeVisible()
-  })
-
-  test('Export ASCII downloads diagram.txt', async ({ page }) => {
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: 'Export ASCII' }).click(),
-    ])
-    expect(download.suggestedFilename()).toBe('diagram.txt')
-    await expect(page.getByText('Exported diagram.txt')).toBeVisible()
   })
 
   test('theme select toggles app dark class for github-dark', async ({ page }) => {

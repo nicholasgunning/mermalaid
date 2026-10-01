@@ -94,7 +94,7 @@ const heroHighlights = [
   'Offline Mermaid editor for macOS',
   'Completely local Encrypted Share Links',
   'Fast editing with Monaco and visual flowchart tools',
-  'SVG, PNG and ASCII export'
+  'SVG, PNG and PDF export'
 ]
 
 const trustSignals = [
@@ -197,7 +197,7 @@ const featureCards = [
   {
     icon: 'SAVE',
     title: 'Export and import',
-    description: 'Export SVG, PNG or ASCII, copy Mermaid code, and drag in existing files to continue working.',
+    description: 'Export SVG, PNG or PDF, copy Mermaid code, and drag in existing files to continue working.',
   },
   {
     icon: 'TYPES',
@@ -298,7 +298,7 @@ const faqs = [
   {
     question: 'Can I export diagrams?',
     answer:
-      'Yes. Mermalaid supports exporting diagrams as SVG, PNG, ASCII, which makes it useful for documentation, architecture reviews, and technical presentations. You can also save your files in Markdown .MD or .MMD format.',
+      'Yes. Mermalaid supports exporting diagrams as SVG, PNG and PDF, which makes it useful for documentation, architecture reviews, and technical presentations. You can also save your files in Markdown .MD or .MMD format.',
   },
   {
     question: 'Is Mermalaid open source?',

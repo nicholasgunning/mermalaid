@@ -41,6 +41,8 @@
   border-radius: 6px 6px 0 0;
   background-color: transparent;
   color: var(--app-fg);
+  /* Dragging a tab must not paint a text selection across the strip. */
+  user-select: none;
   opacity: 0.65;
   transition: background-color 0.2s, opacity 0.2s, border-color 0.2s;
 }
@@ -48,6 +50,39 @@
 .tab:hover {
   opacity: 1;
   background-color: color-mix(in srgb, var(--app-fg) 8%, transparent);
+}
+
+/* Reordering: the tab being dragged fades back, and an accent line marks where it will land.
+   The line is a pseudo-element so it never changes the tab's width (which would shift the
+   midpoints the drop target is computed from), and it sits inside the tab's box so the strip's
+   horizontal overflow cannot clip it off the last tab. */
+.tab-dragging,
+.tab-dragging:hover {
+  opacity: 0.4;
+}
+
+.tab-drop-before,
+.tab-drop-after {
+  position: relative;
+}
+
+.tab-drop-before::before,
+.tab-drop-after::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background-color: var(--app-accent);
+}
+
+.tab-drop-before::before {
+  left: 0;
+}
+
+.tab-drop-after::after {
+  right: 0;
 }
 
 .tab-active,

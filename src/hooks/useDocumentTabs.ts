@@ -9,6 +9,7 @@ import {
   createInitialState,
   getActiveTab,
   isTabDirty,
+  moveTab as moveTabState,
   openDocument as openDocumentState,
   parseTabsState,
   serializeTabsState,
@@ -54,6 +55,8 @@ export interface DocumentTabsApi {
   selectTab: (id: string) => void
   selectRelativeTab: (delta: number) => void
   selectTabAtIndex: (index: number) => void
+  /** Drag-to-reorder: put `id` at `toIndex` in the strip, leaving focus where it is. */
+  moveTab: (id: string, toIndex: number) => void
 }
 
 function readInitialState(): DiagramTabsState {
@@ -184,6 +187,10 @@ export function useDocumentTabs(): DocumentTabsApi {
     setState((prev) => activateTabAtIndex(prev, index))
   }, [])
 
+  const moveTab = useCallback((id: string, toIndex: number) => {
+    setState((prev) => moveTabState(prev, id, toIndex))
+  }, [])
+
   return useMemo(
     () => ({
       tabs: state.tabs,
@@ -207,6 +214,7 @@ export function useDocumentTabs(): DocumentTabsApi {
       selectTab,
       selectRelativeTab,
       selectTabAtIndex,
+      moveTab,
     }),
     [
       state.tabs,
@@ -229,6 +237,7 @@ export function useDocumentTabs(): DocumentTabsApi {
       selectTab,
       selectRelativeTab,
       selectTabAtIndex,
+      moveTab,
     ],
   )
 }

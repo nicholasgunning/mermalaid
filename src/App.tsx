@@ -533,6 +533,7 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
         onClose={documents.closeTab}
         onNew={documents.newTab}
         onSelectRelative={documents.selectRelativeTab}
+        onReorder={documents.moveTab}
       />
       <ConfirmDialog
         open={documents.pendingCloseTab !== null && !windowClose.isAsking}

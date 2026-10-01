@@ -9,11 +9,9 @@ import {
 import { isTauri } from '@tauri-apps/api/core'
 import { message, open } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import { renderMermaidAscii } from 'beautiful-mermaid'
 import { useTheme } from '../hooks/useTheme'
 import { useToast } from '../hooks/useToast'
 import { extractMermaidCode, type MermaidBlock } from '../utils/mermaidCodeBlock'
-import { normalizeMermaidForBeautifulMermaid } from '../utils/normalizeMermaidForBeautifulMermaid'
 import { fixMermaidErrorWithAI, getStoredApiKey } from '../utils/aiErrorFixer'
 import {
   MERMAID_THEME_IDS,
@@ -156,7 +154,6 @@ const MERMAID_ACCEPT_TYPES: SaveFileAcceptType[] = [
 
 const SVG_EXPORT = saveFileKind('diagram.svg', 'SVG', 'svg', 'image/svg+xml')
 const PNG_EXPORT = saveFileKind('diagram.png', 'PNG', 'png', 'image/png')
-const ASCII_EXPORT = saveFileKind('diagram.txt', 'Text', 'txt', 'text/plain')
 const HTML_EXPORT = saveFileKind('diagrams.html', 'HTML', 'html', 'text/html')
 const ALL_TABS_PDF_NAME = 'diagrams.pdf'
 
@@ -708,43 +705,6 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
     })()
   }
 
-  const handleExportASCII = () => {
-    const { code: diagramCode } = parseMermaidWithConfig(activeCode.trim())
-    if (!diagramCode) {
-      showToast('No diagram to export', 'error')
-      return
-    }
-    const exportText = async (text: string) => {
-      try {
-        const result = await saveBlob(new Blob([text], { type: 'text/plain' }), ASCII_EXPORT)
-        const toastMsg = toastMessageForSaveResult(result, 'Exported')
-        if (toastMsg) showToast(toastMsg)
-      } catch (err) {
-        console.error('ASCII export error:', err)
-        showToast('Failed to export ASCII.', 'error')
-      }
-    }
-    if (isMermaidAboutKeywordOnly(diagramCode)) {
-      void buildMermalaidInfoText()
-        .then((text) => exportText(text))
-        .catch((err) => {
-          console.error('ASCII export error:', err)
-          showToast('Failed to export Mermalaid info.', 'error')
-        })
-      return
-    }
-    try {
-      const ascii = renderMermaidAscii(
-        normalizeMermaidForBeautifulMermaid(diagramCode),
-      )
-      void exportText(ascii)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error'
-      console.error('ASCII export error:', err)
-      showToast(`Export failed: ${msg}. Supported: flowcharts, state, sequence, class, ER.`, 'error')
-    }
-  }
-
   const handleCopyCode = () => {
     const plainCode = activeCode.trim() || extractMermaidCode(code)
     const codeBlock = `\`\`\`mermaid\n${plainCode}\n\`\`\``
@@ -1096,9 +1056,6 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
                 <button type="button" onClick={() => { handleExportPDF(); setShowMobileActions(false) }} className="toolbar-btn">
                   PDF
                 </button>
-                <button type="button" onClick={() => { handleExportASCII(); setShowMobileActions(false) }} className="toolbar-btn">
-                  ASCII
-                </button>
                 {hasMultipleBlocks && (
                   <button type="button" onClick={() => { void handleExportAllSVG(); setShowMobileActions(false) }} className="toolbar-btn">
                     Export All
@@ -1305,9 +1262,6 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
             </button>
             <button onClick={handleExportPDF} className="toolbar-btn" title="Export PDF — this tab, or every open tab combined, one diagram per page">
               Export PDF
-            </button>
-            <button onClick={handleExportASCII} className="toolbar-btn" title={hasMultipleBlocks ? 'Export selected block as ASCII' : 'Export ASCII (Unicode box-drawing for terminals)'}>
-              Export ASCII
             </button>
             {hasMultipleBlocks && (
               <button onClick={handleExportAllSVG} className="toolbar-btn" title="Export all mermaid blocks in a single HTML file">

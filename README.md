@@ -54,7 +54,7 @@ Mermalaid includes the features teams usually pay for, while staying free to use
 
 ### File Management
 
-- **Multiple Diagram Tabs** - Keep several `.mmd` documents open at once and switch between them; unsaved tabs are marked, and the whole set of tabs is restored on your next visit
+- **Multiple Diagram Tabs** - Keep several `.mmd` documents open at once and switch between them; drag tabs to reorder them (or `Alt+←` / `Alt+→` from the tab strip), unsaved tabs are marked, and the whole set of tabs is restored on your next visit
 - **Each Tab Is a Workspace** - A new tab opens empty and asks what it should hold: start a new diagram, open an existing `.mmd` file, or pick one from your recent files (desktop). Opening a file fills the empty tab you are looking at instead of adding another one
 - **Unsaved-Change Guards** - Closing a tab with unsaved edits asks first, and on the desktop app closing the window offers to save every unsaved diagram before it goes
 - **Open Files** - Import `.mmd`, `.txt`, or `.md` files (pick or drop several at once — each opens in its own tab)
@@ -64,7 +64,6 @@ Mermalaid includes the features teams usually pay for, while staying free to use
   - **SVG Export** - Vector graphics for presentations and documents
   - **PNG Export** - The full diagram at its own size (never cropped to the window, and without the preview's zoom controls), at a resolution you pick: Standard 1× through Ultra 4× for print-quality output. The dialog shows the exact pixel size before you export, and remembers your choice
   - **PDF Export** - One diagram per page, either for the tab you are on or for every open tab combined into a single document. Each page is the size of its own diagram, so nothing is cropped or letterboxed, and the resolution choice doubles as the print resolution (Standard 1× = 96 dpi through Ultra 4× = 384 dpi)
-- **ASCII Export** - Unicode box-drawing for terminals (flowcharts, state, sequence, class, ER diagrams)
 - **Copy to Clipboard** - Copy Markdown-ready Mermaid blocks for docs and GitHub
 - **Private URL Share** - **Copy private link** stores encrypted diagram data in the URL fragment only (no upload, no server-side storage)
 
@@ -290,10 +289,10 @@ Because this license includes a non-commercial clause, Mermalaid is source-avail
 | **Cost** | ✅ 100% Free | ❌ Free tier with limits, paid for unlimited |
 | **Source-available** | ✅ Yes (CC BY-NC-SA 4.0, non-commercial) | ❌ Usually closed source |
 | **Document Limits** | ✅ Unlimited | ❌ Often 3-5 documents max |
-| **Multiple Open Documents** | ✅ Tabbed, session restored | ✅/❌ Varies |
+| **Multiple Open Documents** | ✅ Tabbed, drag to reorder, session restored | ✅/❌ Varies |
 | **Sign-Up Required** | ✅ No | ❌ Usually required |
 | **Privacy** | ✅ Local storage only | ❌ Cloud sync required |
-| **Export Options** | ✅ SVG, PNG, PDF, ASCII | ✅/❌ Varies |
+| **Export Options** | ✅ SVG, PNG, PDF | ✅/❌ Varies |
 | **AI Assistant** | ✅ Your own Anthropic or IBM ICA key, changes need approval | ✅/❌ Varies |
 | **Syntax Validation** | ✅ Real-time | ✅/❌ Varies |
 | **Desktop App** | ✅ Native macOS and Windows | ❌ Often web-only |
