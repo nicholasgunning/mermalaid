@@ -7,6 +7,7 @@ import {
   buildAnthropicMessages,
   describeAnthropicError,
   describeRefusal,
+  phaseForContentBlock,
   readAnthropicReply,
   updateDiagramTool,
 } from './anthropicAssistant'
@@ -93,6 +94,20 @@ describe('buildAnthropicMessages', () => {
       CONTEXT_BLOCK,
     )
     expect(messages[1].content).toEqual([{ type: 'text', text: 'hello' }])
+  })
+})
+
+describe('phaseForContentBlock', () => {
+  it('names what the panel should say a started block means', () => {
+    expect(phaseForContentBlock('thinking')).toBe('thinking')
+    // A redacted block carries no text, but the turn is still thinking.
+    expect(phaseForContentBlock('redacted_thinking')).toBe('thinking')
+    expect(phaseForContentBlock('text')).toBe('replying')
+    expect(phaseForContentBlock('tool_use')).toBe('drafting')
+  })
+
+  it('has nothing to say about a block the panel does not show', () => {
+    expect(phaseForContentBlock('signature')).toBeNull()
   })
 })
 

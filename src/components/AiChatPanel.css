@@ -1,23 +1,27 @@
-/* AI assistant panel — a drawer over the right edge of the workspace, so the editor/preview split
-   keeps its own widths and its drag-to-resize behaviour. */
+/* AI assistant panel — its own column at the right end of the workspace row, sized by the divider
+   beside it, so the editor and preview give it room instead of being covered by it. */
 .ai-chat-panel {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
   display: flex;
   flex-direction: column;
-  width: min(380px, 100%);
+  min-height: 0;
   background-color: var(--app-bg);
   color: var(--app-fg);
-  border-left: 1px solid var(--app-border);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
 }
 
+.ai-chat-panel-docked {
+  /* The width comes from the divider as an inline style; this keeps flex from reinterpreting it. */
+  flex: 0 0 auto;
+  width: 380px;
+  min-width: 0;
+  border-left: 1px solid var(--app-border);
+}
+
+/* Smartphones have no room for a column, so there the panel takes the whole workspace. */
 .ai-chat-panel-mobile {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
   width: 100%;
-  border-left: none;
 }
 
 .ai-chat-header {
@@ -25,9 +29,23 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  /* Lines up with the editor and preview column headers. */
+  min-height: var(--panel-header-height, 48px);
+  box-sizing: border-box;
   padding: 10px 12px;
   background-color: var(--app-surface);
   border-bottom: 1px solid var(--app-border);
+}
+
+.ai-chat-heading {
+  min-width: 0;
+}
+
+.ai-chat-title,
+.ai-chat-provider {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ai-chat-title {
@@ -164,9 +182,104 @@
   background-color: color-mix(in srgb, var(--app-accent) 16%, transparent);
 }
 
-.ai-chat-thinking {
+/* The live phase of a turn: three dots that keep moving, so a long think still reads as progress. */
+.ai-chat-phase {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 2px 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.ai-chat-phase-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.ai-chat-phase-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--app-accent);
+  animation: ai-chat-pulse 1.1s ease-in-out infinite;
+}
+
+.ai-chat-phase-dots i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.ai-chat-phase-dots i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes ai-chat-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.ai-chat-phase-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Honour a reduced-motion preference: the label alone still says what is happening. */
+@media (prefers-reduced-motion: reduce) {
+  .ai-chat-phase-dots i {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* Reasoning on the way to a reply — present but subordinate to the answer itself. */
+.ai-chat-thinking-block {
+  border-left: 2px solid color-mix(in srgb, var(--app-fg) 20%, transparent);
+  padding-left: 8px;
+}
+
+.ai-chat-thinking-live {
+  border-left-color: var(--app-accent);
+}
+
+.ai-chat-thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--app-fg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
   opacity: 0.7;
-  font-style: italic;
+  cursor: pointer;
+}
+
+.ai-chat-thinking-toggle:hover {
+  opacity: 1;
+}
+
+.ai-chat-thinking-caret {
+  font-size: 10px;
+}
+
+.ai-chat-thinking-text {
+  margin-top: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* A proposed change: never applied until the user says so, so it reads as a card, not a message. */

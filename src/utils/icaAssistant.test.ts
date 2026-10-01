@@ -86,11 +86,42 @@ describe('applyIcaStreamChunk', () => {
     const accumulator = { text: '', calls: new Map() }
     const onTextDelta = vi.fn()
 
-    applyIcaStreamChunk(accumulator, chunk({ content: 'Hello ' }), onTextDelta)
-    applyIcaStreamChunk(accumulator, chunk({ content: 'there.' }), onTextDelta)
+    applyIcaStreamChunk(accumulator, chunk({ content: 'Hello ' }), { onTextDelta })
+    applyIcaStreamChunk(accumulator, chunk({ content: 'there.' }), { onTextDelta })
 
     expect(accumulator.text).toBe('Hello there.')
     expect(onTextDelta.mock.calls).toEqual([['Hello '], ['there.']])
+  })
+
+  it('reports reasoning under either name gateways give it, without mixing it into the answer', () => {
+    const accumulator = { text: '', calls: new Map() }
+    const onThinkingDelta = vi.fn()
+    const onTextDelta = vi.fn()
+    const callbacks = { onThinkingDelta, onTextDelta }
+
+    applyIcaStreamChunk(accumulator, chunk({ reasoning_content: 'Looking at ' }), callbacks)
+    applyIcaStreamChunk(accumulator, chunk({ reasoning: 'the edges.' }), callbacks)
+    applyIcaStreamChunk(accumulator, chunk({ content: 'It is a flowchart.' }), callbacks)
+
+    expect(onThinkingDelta.mock.calls).toEqual([['Looking at '], ['the edges.']])
+    // Reasoning is never part of the reply that is replayed to the model.
+    expect(accumulator.text).toBe('It is a flowchart.')
+    expect(onTextDelta.mock.calls).toEqual([['It is a flowchart.']])
+  })
+
+  it('names the phase each kind of chunk puts the turn into', () => {
+    const accumulator = { text: '', calls: new Map() }
+    const onPhase = vi.fn()
+
+    applyIcaStreamChunk(accumulator, chunk({ reasoning_content: 'hmm' }), { onPhase })
+    applyIcaStreamChunk(accumulator, chunk({ content: 'ok' }), { onPhase })
+    applyIcaStreamChunk(
+      accumulator,
+      chunk({ tool_calls: [{ index: 0, id: 'c1', function: { name: 'update_diagram' } }] }),
+      { onPhase },
+    )
+
+    expect(onPhase.mock.calls.flat()).toEqual(['thinking', 'replying', 'drafting'])
   })
 
   it('joins tool arguments that arrive a few characters at a time', () => {

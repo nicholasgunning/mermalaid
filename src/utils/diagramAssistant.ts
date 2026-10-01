@@ -127,6 +127,22 @@ export function parseEditArguments(json: string): { mermaid: string; summary: st
   }
 }
 
+/**
+ * What the assistant is doing right now, so the panel can say so rather than showing a dead spinner.
+ *
+ * The phases are reported in the order a turn goes through them, but none of them is guaranteed: a
+ * short answer never thinks, and only a turn that changes the diagram ever drafts one.
+ */
+export type AssistantPhase = 'waiting' | 'thinking' | 'replying' | 'drafting'
+
+/** What the panel shows for each phase while a turn is in flight. */
+export const ASSISTANT_PHASE_LABELS: Record<AssistantPhase, string> = {
+  waiting: 'Sending…',
+  thinking: 'Thinking…',
+  replying: 'Replying…',
+  drafting: 'Drafting the diagram…',
+}
+
 export interface AssistantRequest {
   apiKey: string
   /** The conversation so far, ending with the user turn to answer. */
@@ -134,6 +150,15 @@ export interface AssistantRequest {
   context: DiagramContext
   /** Called with each piece of prose as it arrives. */
   onTextDelta?: (delta: string) => void
+  /**
+   * Called with each piece of the model's reasoning as it arrives.
+   *
+   * Only what the API chooses to show: this is a summary of the reasoning, never the raw chain of
+   * thought, and a provider whose models do not report one simply never calls this.
+   */
+  onThinkingDelta?: (delta: string) => void
+  /** Called when the turn moves into a new phase, newest wins. */
+  onPhase?: (phase: AssistantPhase) => void
   signal?: AbortSignal
 }
 

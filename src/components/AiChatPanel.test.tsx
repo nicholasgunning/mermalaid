@@ -16,13 +16,25 @@ const PROPOSAL = {
 }
 
 /** The panel takes the assistant from the hook, so the test wires the two together as App does. */
-function Harness({ onApplyDiagram }: { onApplyDiagram: (mermaid: string) => void }) {
+function Harness({
+  onApplyDiagram,
+  width,
+}: {
+  onApplyDiagram: (mermaid: string) => void
+  width?: number
+}) {
   const assistant = useDiagramAssistant({
     context: { code: 'graph TD\n  A-->B', documentName: 'flow.mmd', error: null },
     onApplyDiagram,
   })
   return (
-    <AiChatPanel open assistant={assistant} onClose={() => {}} onOpenSettings={() => {}} />
+    <AiChatPanel
+      open
+      assistant={assistant}
+      onClose={() => {}}
+      onOpenSettings={() => {}}
+      width={width}
+    />
   )
 }
 
@@ -99,6 +111,51 @@ describe('AiChatPanel', () => {
       { role: 'user', text: 'first line\nsecond line' },
     ])
     expect(input).toHaveValue('')
+  })
+
+  it('docks as a column at the width the divider gives it', () => {
+    render(<Harness onApplyDiagram={vi.fn()} width={420} />)
+
+    const panel = screen.getByRole('complementary', { name: 'AI assistant' })
+    expect(panel).toHaveClass('ai-chat-panel-docked')
+    expect(panel).toHaveStyle({ width: '420px' })
+  })
+
+  it('shows the reasoning and the phase while a turn is in flight, then settles', async () => {
+    const user = userEvent.setup()
+    let release = () => {}
+    turn.mockImplementation(async ({ onPhase, onThinkingDelta, onTextDelta }) => {
+      onPhase?.('thinking')
+      onThinkingDelta?.('Two nodes, one edge.')
+      await new Promise<void>((resolve) => { release = resolve })
+      onPhase?.('replying')
+      onTextDelta?.('It flows A to B.')
+      return { text: 'It flows A to B.' }
+    })
+
+    render(<Harness onApplyDiagram={vi.fn()} />)
+    await user.type(screen.getByLabelText('Message the AI assistant'), 'explain this')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    // Reasoning opens itself while it streams — that is the whole point of showing it.
+    expect(await screen.findByRole('status')).toHaveTextContent('Thinking…')
+    expect(screen.getByText('Two nodes, one edge.')).toBeVisible()
+    expect(screen.getByRole('button', { name: /Thinking/ })).toHaveAttribute('aria-expanded', 'true')
+    // A turn in flight can be stopped, not sent again.
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+
+    release()
+
+    await waitFor(() => expect(screen.getByText('It flows A to B.')).toBeInTheDocument())
+    // Once the reply lands the phase line goes, and the reasoning folds away behind its toggle.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: /Thought about this/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Two nodes, one edge.')).not.toBeInTheDocument()
+
+    // It stays one click away.
+    await user.click(toggle)
+    expect(screen.getByText('Two nodes, one edge.')).toBeVisible()
   })
 
   it('shows a failed turn without losing the conversation', async () => {

@@ -15,7 +15,8 @@
   display: flex;
   flex: 1;
   overflow: hidden;
-  /* Anchors the AI assistant drawer, which overlays the panes rather than resizing them. */
+  /* Anchors the AI assistant panel on smartphones, where it overlays the row instead of joining it
+     as a column. On a desktop the panel is an ordinary flex child and this does nothing. */
   position: relative;
 }
 

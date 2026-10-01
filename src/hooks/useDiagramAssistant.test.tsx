@@ -44,6 +44,74 @@ describe('useDiagramAssistant', () => {
     expect(result.current.entries[1].edit).toBeUndefined()
   })
 
+  it('keeps the reasoning out of the reply, and reports each phase while the turn runs', async () => {
+    // The turn is held open at each phase so the state the panel renders can be read mid-flight.
+    let release = () => {}
+    const held = () => new Promise<void>((resolve) => { release = resolve })
+    turn.mockImplementation(async ({ onPhase, onThinkingDelta, onTextDelta }) => {
+      onPhase?.('thinking')
+      onThinkingDelta?.('The graph has ')
+      onThinkingDelta?.('two nodes.')
+      await held()
+      onPhase?.('replying')
+      onTextDelta?.('It flows A to B.')
+      await held()
+      return { text: 'It flows A to B.' }
+    })
+
+    const { result } = setup()
+    act(() => result.current.send('what does this do?'))
+
+    await waitFor(() => expect(result.current.status).toBe('thinking'))
+    expect(result.current.entries[1].thinking).toBe('The graph has two nodes.')
+    // Reasoning is not mistaken for the answer.
+    expect(result.current.entries[1].text).toBe('')
+
+    await act(async () => release())
+    await waitFor(() => expect(result.current.status).toBe('replying'))
+    expect(result.current.entries[1].text).toBe('It flows A to B.')
+
+    await act(async () => release())
+    await waitFor(() => expect(result.current.status).toBe('idle'))
+    expect(result.current.entries[1].thinking).toBe('The graph has two nodes.')
+  })
+
+  it('names the entry being streamed into, and stops naming one when the turn ends', async () => {
+    turn.mockResolvedValue({ text: 'done' })
+
+    const { result } = setup()
+    act(() => result.current.send('hello'))
+
+    // The panel attaches its progress to this entry, so it has to be named before the reply lands.
+    expect(result.current.streamingEntryId).toBe(result.current.entries[1].id)
+    // Until a provider names a phase, the turn is simply waiting to be answered.
+    expect(result.current.status).toBe('waiting')
+
+    await waitFor(() => expect(result.current.status).toBe('idle'))
+    expect(result.current.streamingEntryId).toBeNull()
+  })
+
+  it('keeps what was already streamed when a turn is stopped', async () => {
+    turn.mockImplementation(async ({ onThinkingDelta, signal }) => {
+      onThinkingDelta?.('Considering the layout…')
+      await new Promise((resolve) => signal?.addEventListener('abort', resolve))
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+    })
+
+    const { result } = setup()
+    act(() => result.current.send('rework this'))
+    await waitFor(() => expect(result.current.entries[1]?.thinking).toBeTruthy())
+
+    act(() => result.current.stop())
+    await waitFor(() => expect(result.current.status).toBe('idle'))
+
+    // Reasoning alone is enough to keep the entry: it is what the user watched happen.
+    expect(result.current.entries).toHaveLength(2)
+    expect(result.current.entries[1].thinking).toBe('Considering the layout…')
+    expect(result.current.entries[1].text).toBe('(stopped)')
+    expect(result.current.error).toBeNull()
+  })
+
   it('sends the diagram as it is at that moment, with the key for the chosen provider', async () => {
     turn.mockResolvedValue({ text: 'ok' })
     const { result } = setup()

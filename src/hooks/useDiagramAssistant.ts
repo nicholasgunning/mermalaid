@@ -12,9 +12,14 @@ import {
   subscribeToAssistantProviders,
   type ConfiguredProvider,
 } from '../utils/assistantProviders'
-import type { AssistantTurn, DiagramContext, EditDecision } from '../utils/diagramAssistant'
+import type {
+  AssistantPhase,
+  AssistantTurn,
+  DiagramContext,
+  EditDecision,
+} from '../utils/diagramAssistant'
 
-export type { EditDecision }
+export type { AssistantPhase, EditDecision }
 
 export interface AssistantEdit {
   summary: string
@@ -26,11 +31,14 @@ export interface AssistantEntry {
   id: string
   role: 'user' | 'assistant'
   text: string
+  /** The reasoning the model showed on the way to this reply, when it showed any. */
+  thinking?: string
   /** Set on an assistant entry that proposed a change to the diagram. */
   edit?: AssistantEdit
 }
 
-export type AssistantStatus = 'idle' | 'waiting' | 'streaming'
+/** `idle` between turns; otherwise the phase the turn in flight is in. */
+export type AssistantStatus = 'idle' | AssistantPhase
 
 export interface UseDiagramAssistantOptions {
   /** The diagram as it currently stands; read at send time, never captured. */
@@ -42,6 +50,8 @@ export interface UseDiagramAssistantOptions {
 export interface DiagramAssistant {
   entries: AssistantEntry[]
   status: AssistantStatus
+  /** The assistant entry currently being streamed into, so the panel can show progress on it. */
+  streamingEntryId: string | null
   error: string | null
   /** The provider that will answer, or null when no key is configured. */
   provider: ConfiguredProvider | null
@@ -62,6 +72,7 @@ export function useDiagramAssistant({
 }: UseDiagramAssistantOptions): DiagramAssistant {
   const [entries, setEntries] = useState<AssistantEntry[]>([])
   const [status, setStatus] = useState<AssistantStatus>('idle')
+  const [streamingEntryId, setStreamingEntryId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hasPendingEdit, setHasPendingEdit] = useState(false)
   const [provider, setProvider] = useState<ConfiguredProvider | null>(resolveAssistantProvider)
@@ -143,21 +154,29 @@ export function useDiagramAssistant({
       ])
       setError(null)
       setStatus('waiting')
+      setStreamingEntryId(replyId)
 
       const controller = new AbortController()
       abortRef.current = controller
 
       void (async () => {
         let streamed = ''
+        let reasoned = ''
         try {
           const reply = await active.provider.send({
             apiKey: active.apiKey,
             turns: turnsRef.current,
             context: contextRef.current,
             signal: controller.signal,
+            onPhase: setStatus,
+            onThinkingDelta: (delta: string) => {
+              reasoned += delta
+              patchEntry(replyId, { thinking: reasoned })
+            },
             onTextDelta: (delta: string) => {
               streamed += delta
-              setStatus('streaming')
+              // A provider that streams prose without naming its phases still reads as live.
+              setStatus('replying')
               patchEntry(replyId, { text: streamed })
             },
           })
@@ -185,8 +204,9 @@ export function useDiagramAssistant({
           // A turn that failed or was stopped never happened: drop it so the next one starts clean.
           turnsRef.current = turnsRef.current.slice(0, -1)
           if (controller.signal.aborted) {
-            if (streamed) {
-              patchEntry(replyId, { text: `${streamed}\n\n(stopped)` })
+            // Whatever it had already said — prose or reasoning — is worth keeping on screen.
+            if (streamed || reasoned) {
+              patchEntry(replyId, { text: streamed ? `${streamed}\n\n(stopped)` : '(stopped)' })
             } else {
               setEntries((current) => current.filter((entry) => entry.id !== replyId))
             }
@@ -197,6 +217,7 @@ export function useDiagramAssistant({
         } finally {
           if (abortRef.current === controller) abortRef.current = null
           setStatus('idle')
+          setStreamingEntryId(null)
         }
       })()
     },
@@ -215,11 +236,13 @@ export function useDiagramAssistant({
     setEntries([])
     setError(null)
     setHasPendingEdit(false)
+    setStreamingEntryId(null)
   }, [])
 
   return {
     entries,
     status,
+    streamingEntryId,
     error,
     provider,
     hasApiKey: provider !== null,

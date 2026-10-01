@@ -196,6 +196,12 @@ interface PreviewProps {
   selectedBlockIndex: number
   setSelectedBlockIndex: (index: number | ((prev: number) => number)) => void
   isMobile?: boolean
+  /**
+   * Changes whenever something outside the preview takes or gives back width — currently the
+   * assistant column opening, closing or being dragged. The diagram re-fits when it does, so it is
+   * never left clipped at a size that was right for a wider column.
+   */
+  refitKey?: number
   /** Empty-tab actions; both fill this tab rather than opening another one. */
   onNewDiagram?: () => void
   onOpenFile?: () => void
@@ -207,7 +213,7 @@ interface PreviewProps {
 export default function Preview({
   code, setError, onCodeChange,
   activeCode, mermaidBlocks, selectedBlockIndex, setSelectedBlockIndex,
-  isMobile = false,
+  isMobile = false, refitKey = 0,
   onNewDiagram, onOpenFile, recentPaths, onOpenRecent, fileLabel,
 }: PreviewProps) {
   const { mermaidTheme } = useTheme()
@@ -387,6 +393,17 @@ export default function Preview({
     )
     return () => cancelAnimationFrame(id)
   }, [isMobile, diagramReady, vvTick])
+
+  // Re-fit when a neighbouring column changes this one's width. Deliberately not a ResizeObserver
+  // on the pane: that would also fire while the editor divider is dragged, throwing away a zoom the
+  // user set by hand.
+  useEffect(() => {
+    if (!diagramReady) return
+    const id = requestAnimationFrame(() =>
+      fitPreviewToScreen(transformRef.current, previewRef.current),
+    )
+    return () => cancelAnimationFrame(id)
+  }, [diagramReady, refitKey])
 
   const blockSelector = hasMultipleBlocks && (
     <div className="block-selector">

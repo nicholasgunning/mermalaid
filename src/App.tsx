@@ -9,9 +9,15 @@ import { useUpdateCheck } from './hooks/useUpdateCheck'
 import { useMountEffect } from './hooks/useMountEffect'
 import { useToast } from './hooks/useToast'
 import { useEditorWidth, clampEditorWidth, viewportWidth } from './hooks/useEditorWidth'
+import {
+  useAiPanelWidth,
+  clampAiPanelWidth,
+  MIN_AI_PANEL_WIDTH_PX,
+  MIN_WORKSPACE_WIDTH_PX,
+} from './hooks/useAiPanelWidth'
 import Editor from './components/Editor'
 import Preview from './components/Preview'
-import PanelDivider from './components/PanelDivider'
+import PanelDivider, { PANEL_DIVIDER_WIDTH_PX } from './components/PanelDivider'
 import Toolbar, { type ToolbarRef } from './components/Toolbar'
 import AiChatPanel from './components/AiChatPanel'
 import { useDiagramAssistant } from './hooks/useDiagramAssistant'
@@ -175,6 +181,7 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
   const [error, setError] = useState<string | null>(null)
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false)
   const [editorWidth, setEditorWidth] = useEditorWidth()
+  const [aiPanelWidth, setAiPanelWidth] = useAiPanelWidth()
   const [containerWidth, setContainerWidth] = useState(viewportWidth)
   const [mobileWorkspacePanel, setMobileWorkspacePanel] = useState<MobileWorkspacePanel>('preview')
   const documentPath = activeTab.path
@@ -489,8 +496,14 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
 
   const showEditorPanel = !isSmartphoneLayout || mobileWorkspacePanel === 'editor'
   const showPreviewPanel = !isSmartphoneLayout || mobileWorkspacePanel === 'preview'
-  // Applied width is the saved preference clamped to the current window; the saved value is untouched.
-  const appliedEditorWidth = clampEditorWidth(editorWidth, containerWidth)
+  /** On a desktop the assistant is a column of its own; a smartphone has no room, so it overlays. */
+  const isAiChatDocked = showAiChat && !isSmartphoneLayout
+  // Applied widths are the saved preferences clamped to the current window; the saved values are
+  // untouched, so a wide layout comes back when the window grows again.
+  const appliedAiPanelWidth = isAiChatDocked ? clampAiPanelWidth(aiPanelWidth, containerWidth) : 0
+  /** What the editor/preview split has left once the assistant has taken its column. */
+  const splitWidth = containerWidth - appliedAiPanelWidth - (isAiChatDocked ? PANEL_DIVIDER_WIDTH_PX : 0)
+  const appliedEditorWidth = clampEditorWidth(editorWidth, splitWidth)
 
   return (
     <AgentBridgeProvider value={agentBridge}>
@@ -587,7 +600,8 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
           <PanelDivider
             width={appliedEditorWidth}
             onWidthChange={setEditorWidth}
-            containerWidth={containerWidth}
+            /* The split's own width, not the whole row: the editor cannot grow into the assistant. */
+            containerWidth={splitWidth}
           />
         )}
         {showPreviewPanel && (
@@ -600,11 +614,23 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
             selectedBlockIndex={selectedBlockIndex}
             setSelectedBlockIndex={setSelectedBlockIndex}
             isMobile={isSmartphoneLayout}
+            refitKey={appliedAiPanelWidth}
             onNewDiagram={handleStartNewDiagram}
             onOpenFile={handleOpenFileInTab}
             recentPaths={recentPaths}
             onOpenRecent={(path) => void toolbarRef.current?.openPath(path)}
             fileLabel={recentFileLabel}
+          />
+        )}
+        {isAiChatDocked && (
+          <PanelDivider
+            width={appliedAiPanelWidth}
+            onWidthChange={setAiPanelWidth}
+            containerWidth={containerWidth}
+            side="right"
+            min={MIN_AI_PANEL_WIDTH_PX}
+            minRemaining={MIN_WORKSPACE_WIDTH_PX}
+            label="Resize the AI assistant panel"
           />
         )}
         <AiChatPanel
@@ -613,6 +639,7 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
           onClose={() => setShowAiChat(false)}
           onOpenSettings={() => toolbarRef.current?.openSettings()}
           isMobile={isSmartphoneLayout}
+          width={appliedAiPanelWidth}
         />
       </div>
       {isSmartphoneLayout && (

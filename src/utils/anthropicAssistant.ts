@@ -14,14 +14,21 @@ import {
   UPDATE_DIAGRAM_TOOL_DESCRIPTION,
   UPDATE_DIAGRAM_TOOL_NAME,
   UPDATE_DIAGRAM_TOOL_SCHEMA,
+  type AssistantPhase,
   type AssistantProvider,
   type AssistantReply,
   type AssistantRequest,
   type AssistantTurn,
 } from './diagramAssistant'
 
-/** Opus 5: thinking is on by default, so `thinking` is deliberately left unset below. */
 export const ANTHROPIC_ASSISTANT_MODEL = 'claude-opus-5'
+
+/**
+ * Opus 5 thinks by default but keeps it to itself: `display` defaults to `omitted`, which streams
+ * thinking blocks with empty text and reads as a long pause before the answer. The panel shows the
+ * reasoning as it arrives, so it asks for the summary the API is willing to give.
+ */
+const THINKING: Anthropic.Beta.BetaThinkingConfigParam = { type: 'adaptive', display: 'summarized' }
 
 /** Streaming, so a long answer cannot hit a request timeout; this is a ceiling, not a reservation. */
 const MAX_OUTPUT_TOKENS = 64_000
@@ -130,23 +137,42 @@ export function readAnthropicReply(message: Anthropic.Beta.BetaMessage): Assista
   }
 }
 
+/** The phase a newly started content block puts the turn into, or null for a block the panel ignores. */
+export function phaseForContentBlock(type: string): AssistantPhase | null {
+  switch (type) {
+    case 'thinking':
+    case 'redacted_thinking':
+      return 'thinking'
+    case 'text':
+      return 'replying'
+    case 'tool_use':
+      return 'drafting'
+    default:
+      return null
+  }
+}
+
 /**
  * One assistant turn, streamed.
  *
  * `eager_input_streaming` is deliberately off: nothing here renders a half-written diagram, and
- * leaving it off keeps the API's own validation of the tool input.
+ * leaving it off keeps the API's own validation of the tool input. The panel still says when a
+ * diagram is being written, from the block starting rather than from its contents.
  */
 async function send({
   apiKey,
   turns,
   context,
   onTextDelta,
+  onThinkingDelta,
+  onPhase,
   signal,
 }: AssistantRequest): Promise<AssistantReply> {
   const stream = clientFor(apiKey).beta.messages.stream(
     {
       model: ANTHROPIC_ASSISTANT_MODEL,
       max_tokens: MAX_OUTPUT_TOKENS,
+      thinking: THINKING,
       betas: [SERVER_SIDE_FALLBACK_BETA],
       fallbacks: 'default',
       system: [
@@ -163,9 +189,14 @@ async function send({
   )
 
   for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-      onTextDelta?.(event.delta.text)
+    if (event.type === 'content_block_start') {
+      const phase = phaseForContentBlock(event.content_block.type)
+      if (phase) onPhase?.(phase)
+      continue
     }
+    if (event.type !== 'content_block_delta') continue
+    if (event.delta.type === 'text_delta') onTextDelta?.(event.delta.text)
+    else if (event.delta.type === 'thinking_delta') onThinkingDelta?.(event.delta.thinking)
   }
   return readAnthropicReply(await stream.finalMessage())
 }

@@ -187,6 +187,31 @@ interface StreamAccumulator {
   calls: Map<number, { id: string; name: string; args: string }>
 }
 
+/** The callbacks a streamed turn reports its progress through. */
+type StreamCallbacks = Pick<AssistantRequest, 'onTextDelta' | 'onThinkingDelta' | 'onPhase'>
+
+/**
+ * One chunk's delta, in the shape the OpenAI dialect streams it.
+ *
+ * Reasoning has no place in the OpenAI spec, so the gateways that expose it each picked a name:
+ * `reasoning_content` is the common one, `reasoning` the other. Both are read, and a model that
+ * reports neither simply streams prose.
+ */
+interface OpenAiStreamDelta {
+  content?: unknown
+  reasoning_content?: unknown
+  reasoning?: unknown
+  tool_calls?: OpenAiToolCall[]
+}
+
+/** The reasoning in a chunk, whichever of the two field names this gateway uses. */
+function readReasoningDelta(delta: OpenAiStreamDelta): string {
+  for (const value of [delta.reasoning_content, delta.reasoning]) {
+    if (typeof value === 'string' && value) return value
+  }
+  return ''
+}
+
 /**
  * Folds one streamed chunk into the answer so far.
  *
@@ -197,18 +222,25 @@ interface StreamAccumulator {
 export function applyIcaStreamChunk(
   accumulator: StreamAccumulator,
   chunk: unknown,
-  onTextDelta?: (delta: string) => void,
+  { onTextDelta, onThinkingDelta, onPhase }: StreamCallbacks = {},
 ): void {
-  const delta = (chunk as { choices?: { delta?: { content?: unknown; tool_calls?: OpenAiToolCall[] } }[] })
-    ?.choices?.[0]?.delta
+  const delta = (chunk as { choices?: { delta?: OpenAiStreamDelta }[] })?.choices?.[0]?.delta
   if (!delta) return
 
+  const reasoning = readReasoningDelta(delta)
+  if (reasoning) {
+    onPhase?.('thinking')
+    onThinkingDelta?.(reasoning)
+  }
+
   if (typeof delta.content === 'string' && delta.content) {
+    onPhase?.('replying')
     accumulator.text += delta.content
     onTextDelta?.(delta.content)
   }
 
   for (const call of delta.tool_calls ?? []) {
+    onPhase?.('drafting')
     const index = call.index ?? 0
     const existing = accumulator.calls.get(index) ?? { id: '', name: '', args: '' }
     accumulator.calls.set(index, {
@@ -276,8 +308,11 @@ async function send({
   turns,
   context,
   onTextDelta,
+  onThinkingDelta,
+  onPhase,
   signal,
 }: AssistantRequest): Promise<AssistantReply> {
+  const callbacks: StreamCallbacks = { onTextDelta, onThinkingDelta, onPhase }
   // Falls back to the default model, so a key alone is enough to start chatting.
   const choice = resolveIcaModel()
 
@@ -309,12 +344,15 @@ async function send({
         args: call.function?.arguments ?? '',
       })
     })
-    if (accumulator.text) onTextDelta?.(accumulator.text)
+    if (accumulator.text) {
+      onPhase?.('replying')
+      onTextDelta?.(accumulator.text)
+    }
     return replyFromAccumulator(accumulator)
   }
 
   for await (const chunk of readSseData(response.body)) {
-    applyIcaStreamChunk(accumulator, chunk, onTextDelta)
+    applyIcaStreamChunk(accumulator, chunk, callbacks)
   }
   return replyFromAccumulator(accumulator)
 }

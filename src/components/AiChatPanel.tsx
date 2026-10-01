@@ -1,11 +1,16 @@
 /**
- * The AI assistant panel: a chat beside the diagram that can propose changes to it.
+ * The AI assistant panel: a column docked to the right of the workspace that can propose changes to
+ * the diagram.
  *
  * Nothing the assistant writes reaches the canvas on its own — a proposed change is rendered as a
  * card with the new Mermaid behind a toggle, and Apply is the only thing that touches the document.
+ *
+ * A turn is shown while it happens rather than after: the phase it is in, the reasoning it shows on
+ * the way, and the prose as it streams.
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { AssistantEntry, DiagramAssistant } from '../hooks/useDiagramAssistant'
+import { ASSISTANT_PHASE_LABELS } from '../utils/diagramAssistant'
 import './AiChatPanel.css'
 
 interface AiChatPanelProps {
@@ -15,6 +20,8 @@ interface AiChatPanelProps {
   /** Opens the settings dialog, where the API key lives. */
   onOpenSettings: () => void
   isMobile?: boolean
+  /** Width of the docked column in px, set by the divider. Ignored on mobile, which goes full width. */
+  width?: number
 }
 
 const SUGGESTIONS = [
@@ -22,6 +29,61 @@ const SUGGESTIONS = [
   'Add an error path',
   'Rename the nodes to be clearer',
 ]
+
+/** The live phase of the turn, so a long wait reads as progress rather than as nothing happening. */
+function PhaseIndicator({ status }: { status: DiagramAssistant['status'] }) {
+  if (status === 'idle') return null
+  return (
+    <div className="ai-chat-phase" role="status">
+      <span className="ai-chat-phase-dots" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="ai-chat-phase-label">{ASSISTANT_PHASE_LABELS[status]}</span>
+    </div>
+  )
+}
+
+/**
+ * The reasoning behind a reply.
+ *
+ * It opens itself while it is streaming — that is the point of showing it — and closes once the
+ * reply lands, so a finished conversation reads as prose with the reasoning still a click away.
+ */
+function ThinkingBlock({ text, live }: { text: string; live: boolean }) {
+  const [openedByUser, setOpenedByUser] = useState<boolean | null>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const expanded = openedByUser ?? live
+
+  // Keep the newest reasoning in view while it streams.
+  useEffect(() => {
+    if (!expanded || !live) return
+    const body = bodyRef.current
+    if (body) body.scrollTop = body.scrollHeight
+  }, [text, expanded, live])
+
+  return (
+    <div className={`ai-chat-thinking-block ${live ? 'ai-chat-thinking-live' : ''}`}>
+      <button
+        type="button"
+        className="ai-chat-thinking-toggle"
+        aria-expanded={expanded}
+        onClick={() => setOpenedByUser(!expanded)}
+      >
+        <span className="ai-chat-thinking-caret" aria-hidden="true">
+          {expanded ? '▾' : '▸'}
+        </span>
+        {live ? 'Thinking' : 'Thought about this'}
+      </button>
+      {expanded && (
+        <div className="ai-chat-thinking-text" ref={bodyRef}>
+          {text}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function EditCard({ entry, assistant }: { entry: AssistantEntry; assistant: DiagramAssistant }) {
   const [showSource, setShowSource] = useState(false)
@@ -64,11 +126,12 @@ export default function AiChatPanel({
   onClose,
   onOpenSettings,
   isMobile = false,
+  width,
 }: AiChatPanelProps) {
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const logRef = useRef<HTMLDivElement>(null)
-  const { entries, status, error, hasApiKey, provider } = assistant
+  const { entries, status, streamingEntryId, error, hasApiKey, provider } = assistant
   const isBusy = status !== 'idle'
 
   useEffect(() => {
@@ -88,7 +151,7 @@ export default function AiChatPanel({
   useEffect(() => {
     const log = logRef.current
     if (log) log.scrollTop = log.scrollHeight
-  }, [entries])
+  }, [entries, status])
 
   if (!open) return null
 
@@ -108,12 +171,13 @@ export default function AiChatPanel({
 
   return (
     <aside
-      className={`ai-chat-panel ${isMobile ? 'ai-chat-panel-mobile' : ''}`}
+      className={`ai-chat-panel ${isMobile ? 'ai-chat-panel-mobile' : 'ai-chat-panel-docked'}`}
+      style={isMobile || !width ? undefined : { width: `${width}px` }}
       role="complementary"
       aria-label="AI assistant"
     >
       <header className="ai-chat-header">
-        <div>
+        <div className="ai-chat-heading">
           <div className="ai-chat-title">AI assistant</div>
           {provider && <div className="ai-chat-provider">{provider.provider.label}</div>}
         </div>
@@ -168,18 +232,17 @@ export default function AiChatPanel({
           </div>
         )}
 
-        {entries.map((entry) => (
-          <div key={entry.id} className={`ai-chat-entry ai-chat-entry-${entry.role}`}>
-            {entry.text && <div className="ai-chat-bubble">{entry.text}</div>}
-            {entry.edit && <EditCard entry={entry} assistant={assistant} />}
-          </div>
-        ))}
-
-        {status === 'waiting' && (
-          <div className="ai-chat-entry ai-chat-entry-assistant">
-            <div className="ai-chat-bubble ai-chat-thinking">Thinking…</div>
-          </div>
-        )}
+        {entries.map((entry) => {
+          const isStreaming = entry.id === streamingEntryId
+          return (
+            <div key={entry.id} className={`ai-chat-entry ai-chat-entry-${entry.role}`}>
+              {entry.thinking && <ThinkingBlock text={entry.thinking} live={isStreaming} />}
+              {entry.text && <div className="ai-chat-bubble">{entry.text}</div>}
+              {entry.edit && <EditCard entry={entry} assistant={assistant} />}
+              {isStreaming && <PhaseIndicator status={status} />}
+            </div>
+          )
+        })}
       </div>
 
       {error && (

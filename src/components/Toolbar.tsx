@@ -203,7 +203,7 @@ interface ToolbarProps {
   /** Records content Mermalaid wrote to disk so its own save isn't seen as an external change. */
   onDocumentSaved?: (content: string) => void
   isMobile?: boolean
-  /** Whether the AI assistant drawer is showing, so the button can read as a toggle. */
+  /** Whether the AI assistant panel is showing, so the button can read as a toggle. */
   aiChatOpen?: boolean
   onToggleAiChat?: () => void
   /** Smartphone bottom bar uses the same sheet; this toggles it. */
