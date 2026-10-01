@@ -33,6 +33,7 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@dagrejs/dagre": "^2.0.4",
     "@monaco-editor/react": "^4.6.0",
     "@sparticuz/chromium": "148.0.0",

@@ -9,7 +9,7 @@ import {
 import { isTauri } from '@tauri-apps/api/core'
 import { message, open } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import { renderMermaidAscii, renderMermaid } from 'beautiful-mermaid'
+import { renderMermaidAscii } from 'beautiful-mermaid'
 import { useTheme } from '../hooks/useTheme'
 import { useToast } from '../hooks/useToast'
 import { extractMermaidCode, type MermaidBlock } from '../utils/mermaidCodeBlock'
@@ -46,6 +46,13 @@ import {
   type PngExportScale,
   type SvgExportSize,
 } from '../utils/pngExport'
+import {
+  collectDiagramsFromTabs,
+  pdfFileNameFor,
+  renderDiagramsToPdf,
+  type PdfDiagramEntry,
+} from '../utils/pdfExport'
+import { renderDiagramSvgMarkup } from '../utils/renderDiagramSvg'
 import { getAppThemeCssVars } from '../utils/mermaidThemes'
 import Settings from './Settings'
 import ConfirmDialog from './ConfirmDialog'
@@ -54,10 +61,17 @@ import { useAgentBridgeContext } from '../hooks/useAgentBridgeContext'
 import type { BridgeStatus } from '../agentBridge/bridgeClient'
 import { rebuildNativeAppMenu } from '../nativeAppMenu'
 import { addRecentFile, recentFileLabel, removeRecentFile } from '../utils/recentFiles'
-import type { OpenDocumentInput } from '../utils/documentTabs'
+import { tabTitle, type DiagramTab, type OpenDocumentInput } from '../utils/documentTabs'
 import { DIAGRAM_FILE_EXTENSIONS } from '../utils/diagramImportFiles'
 import { copyPlainTextWhenReady, formatClipboardFailureMessage } from '../utils/copyToClipboard'
-import { saveBlob, saveFileKind, toastMessageForSaveResult, type SaveFileAcceptType, type SaveFileFilter } from '../utils/saveFile'
+import {
+  saveBlob,
+  saveFileKind,
+  toastMessageForSaveResult,
+  type SaveFileAcceptType,
+  type SaveFileFilter,
+  type SaveFileOptions,
+} from '../utils/saveFile'
 import {
   applyPrivateShareFullUrlToHistory,
   assertPrivateShareUrlFits,
@@ -76,13 +90,25 @@ import {
 import './Toolbar.css'
 
 const PNG_SCALE_STORAGE_KEY = 'mermalaid-png-export-scale'
+const PDF_SCALE_STORAGE_KEY = 'mermalaid-pdf-export-scale'
 
-function readStoredPngScale(): PngExportScale {
+function readStoredScale(key: string): PngExportScale {
   try {
-    const stored = Number(localStorage.getItem(PNG_SCALE_STORAGE_KEY))
+    const stored = Number(localStorage.getItem(key))
     return isValidPngExportScale(stored) ? stored : DEFAULT_PNG_EXPORT_SCALE
   } catch {
     return DEFAULT_PNG_EXPORT_SCALE
+  }
+}
+
+/** PDF export covers the focused document, or every open tab in one file. */
+type PdfExportScope = 'tab' | 'all'
+
+function storeScale(key: string, scale: PngExportScale): void {
+  try {
+    localStorage.setItem(key, String(scale))
+  } catch {
+    /* ignore blocked storage */
   }
 }
 
@@ -132,6 +158,11 @@ const SVG_EXPORT = saveFileKind('diagram.svg', 'SVG', 'svg', 'image/svg+xml')
 const PNG_EXPORT = saveFileKind('diagram.png', 'PNG', 'png', 'image/png')
 const ASCII_EXPORT = saveFileKind('diagram.txt', 'Text', 'txt', 'text/plain')
 const HTML_EXPORT = saveFileKind('diagrams.html', 'HTML', 'html', 'text/html')
+const ALL_TABS_PDF_NAME = 'diagrams.pdf'
+
+function pdfExportKind(fileName: string): SaveFileOptions {
+  return saveFileKind(fileName, 'PDF', 'pdf', 'application/pdf')
+}
 
 const LICENSE_INFO_TEXT = `Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
 
@@ -162,6 +193,10 @@ interface ToolbarProps {
   documentPathRef: MutableRefObject<string | null>
   /** Updates both the path ref and the mirrored state that drives the external-file watcher. */
   setDocumentPath: (path: string | null) => void
+  /** Every open document, in tab order — PDF export can cover all of them at once. */
+  tabs: DiagramTab[]
+  /** Id of the focused tab, i.e. the one a single-tab export applies to. */
+  activeTabId: string
   /** Opens a document in its own tab (or focuses the tab already showing that path). */
   openDocument: (input: OpenDocumentInput) => void
   /** Adds an empty tab and focuses it — what New does now that documents are tabbed. */
@@ -171,6 +206,9 @@ interface ToolbarProps {
   /** Records content Mermalaid wrote to disk so its own save isn't seen as an external change. */
   onDocumentSaved?: (content: string) => void
   isMobile?: boolean
+  /** Whether the AI assistant drawer is showing, so the button can read as a toggle. */
+  aiChatOpen?: boolean
+  onToggleAiChat?: () => void
   /** Smartphone bottom bar uses the same sheet; this toggles it. */
   showMobileActions?: boolean
   setShowMobileActions?: (open: boolean) => void
@@ -186,6 +224,8 @@ export interface ToolbarRef {
   handleDuplicate: () => void
   handleEngineVersionInfo: () => void
   handleShowLicenseInfo: () => void
+  /** Lets the AI assistant panel send the user to the API key field. */
+  openSettings: () => void
   openPath: (path: string) => Promise<void>
   openMobileActions?: () => void
 }
@@ -214,6 +254,8 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
   error,
   activeCode,
   mermaidBlocks,
+  tabs,
+  activeTabId,
   documentPathRef,
   setDocumentPath,
   openDocument,
@@ -221,6 +263,8 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
   setDocumentName,
   onDocumentSaved,
   isMobile = false,
+  aiChatOpen = false,
+  onToggleAiChat,
   showMobileActions: showMobileActionsProp,
   setShowMobileActions: setShowMobileActionsProp,
 }, ref) => {
@@ -236,8 +280,16 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
   const setShowMobileActions = setShowMobileActionsProp ?? setShowMobileActionsState
   const [isFixing, setIsFixing] = useState(false)
   const [pngExportSize, setPngExportSize] = useState<SvgExportSize | null>(null)
-  const [pngExportScale, setPngExportScale] = useState<PngExportScale>(readStoredPngScale)
+  const [pngExportScale, setPngExportScale] = useState<PngExportScale>(() =>
+    readStoredScale(PNG_SCALE_STORAGE_KEY),
+  )
   const [isExportingPng, setIsExportingPng] = useState(false)
+  const [showPdfExport, setShowPdfExport] = useState(false)
+  const [pdfExportScope, setPdfExportScope] = useState<PdfExportScope>('tab')
+  const [pdfExportScale, setPdfExportScale] = useState<PngExportScale>(() =>
+    readStoredScale(PDF_SCALE_STORAGE_KEY),
+  )
+  const [pdfProgress, setPdfProgress] = useState<{ done: number; total: number } | null>(null)
   const [isCopyingPrivateLink, setIsCopyingPrivateLink] = useState(false)
   const [isCopyingPreviewLink, setIsCopyingPreviewLink] = useState(false)
   const hasMultipleBlocks = mermaidBlocks.length > 1
@@ -579,6 +631,83 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
     })()
   }
 
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null
+  const activeDocumentTitle = activeTab ? tabTitle(activeTab) : 'diagram'
+
+  /** Diagrams a scope contributes, in page order. */
+  const pdfDiagramsFor = (scope: PdfExportScope): PdfDiagramEntry[] =>
+    collectDiagramsFromTabs(scope === 'all' ? tabs : activeTab ? [activeTab] : [])
+
+  const activeTabPdfDiagrams = pdfDiagramsFor('tab')
+  const allTabsPdfDiagrams = pdfDiagramsFor('all')
+  /** With one tab open the two scopes are the same export, so the choice is not worth offering. */
+  const canExportAllTabs = tabs.length > 1
+  const isExportingPdf = pdfProgress !== null
+
+  /** Opens the PDF chooser; the export runs from {@link runPdfExport}. */
+  const handleExportPDF = () => {
+    if (allTabsPdfDiagrams.length === 0) {
+      showToast('No diagrams to export', 'error')
+      return
+    }
+    // An empty tab would otherwise open the dialog on a scope that cannot produce a page.
+    setPdfExportScope(activeTabPdfDiagrams.length > 0 || !canExportAllTabs ? 'tab' : 'all')
+    setShowPdfExport(true)
+  }
+
+  const runPdfExport = () => {
+    const entries = pdfDiagramsFor(pdfExportScope)
+    if (entries.length === 0) {
+      showToast('No diagrams to export', 'error')
+      return
+    }
+
+    const defaultThemeOptions = getMermaidThemeOptions(mermaidTheme)
+    const background =
+      getAppThemeCssVars(mermaidTheme)['--app-bg'] ?? (isDark ? '#1e1e1e' : '#ffffff')
+    const exportingAll = pdfExportScope === 'all'
+
+    setPdfProgress({ done: 0, total: entries.length })
+    void (async () => {
+      try {
+        const { blob, pageCount, skipped } = await renderDiagramsToPdf(
+          entries,
+          {
+            scale: pdfExportScale,
+            background,
+            render: (code, plainTextLabels) =>
+              renderDiagramSvgMarkup(code, { isDark, defaultThemeOptions, plainTextLabels }),
+            onProgress: (done, total) => setPdfProgress({ done, total }),
+          },
+          { title: exportingAll ? 'Mermalaid diagrams' : activeDocumentTitle },
+        )
+
+        const result = await saveBlob(
+          blob,
+          pdfExportKind(exportingAll ? ALL_TABS_PDF_NAME : pdfFileNameFor(activeDocumentTitle)),
+        )
+        setShowPdfExport(false)
+        const toastMsg = toastMessageForSaveResult(
+          result,
+          `Exported ${pageCount} page${pageCount === 1 ? '' : 's'} to`,
+        )
+        if (toastMsg) {
+          showToast(
+            skipped.length > 0 ? `${toastMsg} — could not render ${skipped.join(', ')}` : toastMsg,
+          )
+        }
+      } catch (err) {
+        console.error('PDF export error:', err)
+        showToast(
+          'Failed to export PDF: ' + (err instanceof Error ? err.message : 'Unknown error'),
+          'error',
+        )
+      } finally {
+        setPdfProgress(null)
+      }
+    })()
+  }
+
   const handleExportASCII = () => {
     const { code: diagramCode } = parseMermaidWithConfig(activeCode.trim())
     if (!diagramCode) {
@@ -739,47 +868,13 @@ const Toolbar = forwardRef<ToolbarRef, ToolbarProps>(({
 
     for (let i = 0; i < mermaidBlocks.length; i++) {
       const rawBlock = mermaidBlocks[i].code
-      const { code: diagramCode, config: blockConfig } = parseMermaidWithConfig(
-        rawBlock
-      )
-      const officialYamlConfig = parseMermaidConfigForOfficialRenderer(rawBlock)
-      const themeOptions = blockConfig
-        ? mapMermaidConfigToThemeOptions(blockConfig)
-        : defaultThemeOptions
-      const normalizedForCompat = normalizeMermaidForBeautifulMermaid(diagramCode)
       try {
+        const { code: diagramCode } = parseMermaidWithConfig(rawBlock)
         if (isMermaidAboutKeywordOnly(diagramCode)) {
           svgs.push(await buildMermalaidAboutPreviewHtml())
           continue
         }
-        let svg: string
-        try {
-          svg = await renderOfficialMermaidPreview(
-            diagramCode,
-            isDark,
-            themeOptions,
-            officialYamlConfig,
-          )
-        } catch (primaryErr) {
-          try {
-            if (normalizedForCompat !== diagramCode) {
-              svg = await renderOfficialMermaidPreview(
-                normalizedForCompat,
-                isDark,
-                themeOptions,
-                officialYamlConfig,
-              )
-            } else {
-              throw primaryErr
-            }
-          } catch {
-            svg = await renderMermaid(
-              normalizedForCompat,
-              themeOptions,
-            )
-          }
-        }
-        svgs.push(svg)
+        svgs.push(await renderDiagramSvgMarkup(rawBlock, { isDark, defaultThemeOptions }))
       } catch (err) {
         console.error(`Failed to render block ${i + 1}:`, err)
         svgs.push(`<p>Failed to render diagram ${i + 1}</p>`)
@@ -848,6 +943,7 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
     handleDuplicate,
     handleEngineVersionInfo,
     handleShowLicenseInfo,
+    openSettings: () => setShowSettings(true),
     openPath,
     openMobileActions: () => setShowMobileActions(true),
   }))
@@ -973,6 +1069,21 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
               </div>
             </div>
 
+            {onToggleAiChat && (
+              <div className="toolbar-mobile-sheet-section">
+                <span className="toolbar-mobile-section-label">Assistant</span>
+                <div className="toolbar-mobile-action-grid">
+                  <button
+                    type="button"
+                    onClick={() => { onToggleAiChat(); setShowMobileActions(false) }}
+                    className="toolbar-btn"
+                  >
+                    AI Chat
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="toolbar-mobile-sheet-section">
               <span className="toolbar-mobile-section-label">Export</span>
               <div className="toolbar-mobile-action-grid">
@@ -981,6 +1092,9 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
                 </button>
                 <button type="button" onClick={() => { void handleExportPNG(); setShowMobileActions(false) }} className="toolbar-btn">
                   PNG
+                </button>
+                <button type="button" onClick={() => { handleExportPDF(); setShowMobileActions(false) }} className="toolbar-btn">
+                  PDF
                 </button>
                 <button type="button" onClick={() => { handleExportASCII(); setShowMobileActions(false) }} className="toolbar-btn">
                   ASCII
@@ -1067,11 +1181,7 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
                 disabled={isExportingPng}
                 onChange={() => {
                   setPngExportScale(scale)
-                  try {
-                    localStorage.setItem(PNG_SCALE_STORAGE_KEY, String(scale))
-                  } catch {
-                    /* ignore blocked storage */
-                  }
+                  storeScale(PNG_SCALE_STORAGE_KEY, scale)
                 }}
               />
               <span className="png-export-option-label">
@@ -1089,6 +1199,78 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
     </ConfirmDialog>
   )
 
+  const pdfProgressMessage = () => {
+    if (!pdfProgress) return null
+    if (pdfProgress.done >= pdfProgress.total) return 'Writing the PDF…'
+    return `Rendering diagram ${pdfProgress.done + 1} of ${pdfProgress.total}…`
+  }
+
+  const pdfExportDialog = (
+    <ConfirmDialog
+      open={showPdfExport}
+      title="Export PDF"
+      message={
+        pdfProgressMessage() ?? 'Every diagram becomes one page, at the size it has on screen.'
+      }
+      confirmLabel={isExportingPdf ? 'Exporting…' : 'Export PDF'}
+      cancelLabel="Cancel"
+      busy={isExportingPdf}
+      onConfirm={runPdfExport}
+      onCancel={() => setShowPdfExport(false)}
+    >
+      {canExportAllTabs && (
+        <fieldset className="png-export-options">
+          <legend className="png-export-legend">Diagrams</legend>
+          {(
+            [
+              ['tab', `This tab (${activeDocumentTitle})`, activeTabPdfDiagrams.length],
+              ['all', `All ${tabs.length} tabs, combined`, allTabsPdfDiagrams.length],
+            ] as const
+          ).map(([scope, label, pages]) => (
+            <label key={scope} className="png-export-option">
+              <input
+                type="radio"
+                name="pdf-export-scope"
+                value={scope}
+                checked={pdfExportScope === scope}
+                disabled={isExportingPdf || pages === 0}
+                onChange={() => setPdfExportScope(scope)}
+              />
+              <span className="png-export-option-label">{label}</span>
+              <span className="png-export-option-size">
+                {pages === 0 ? 'no diagrams' : `${pages} page${pages === 1 ? '' : 's'}`}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+
+      <fieldset className="png-export-options">
+        <legend className="png-export-legend">Resolution</legend>
+        {PNG_EXPORT_SCALES.map((scale) => (
+          <label key={scale} className="png-export-option">
+            <input
+              type="radio"
+              name="pdf-export-scale"
+              value={scale}
+              checked={pdfExportScale === scale}
+              disabled={isExportingPdf}
+              onChange={() => {
+                setPdfExportScale(scale)
+                storeScale(PDF_SCALE_STORAGE_KEY, scale)
+              }}
+            />
+            <span className="png-export-option-label">
+              {PNG_SCALE_LABELS[scale]} ({scale}×)
+            </span>
+            {/* A CSS pixel is 1/96", so the multiplier is the print resolution. */}
+            <span className="png-export-option-size">{96 * scale} dpi</span>
+          </label>
+        ))}
+      </fieldset>
+    </ConfirmDialog>
+  )
+
   return (
     <>
       <input
@@ -1099,6 +1281,7 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
         style={{ display: 'none' }}
       />
       {pngExportDialog}
+      {pdfExportDialog}
       {isMobile ? mobileToolbar : (
         <div className="toolbar">
           <div className="toolbar-section">
@@ -1120,12 +1303,26 @@ ${svgs.map((svg, i) => `<div class="diagram"><h2>Diagram ${i + 1}</h2>${svg}</di
             <button onClick={handleExportPNG} className="toolbar-btn" title={hasMultipleBlocks ? 'Export selected block as PNG' : 'Export PNG'}>
               Export PNG
             </button>
+            <button onClick={handleExportPDF} className="toolbar-btn" title="Export PDF — this tab, or every open tab combined, one diagram per page">
+              Export PDF
+            </button>
             <button onClick={handleExportASCII} className="toolbar-btn" title={hasMultipleBlocks ? 'Export selected block as ASCII' : 'Export ASCII (Unicode box-drawing for terminals)'}>
               Export ASCII
             </button>
             {hasMultipleBlocks && (
               <button onClick={handleExportAllSVG} className="toolbar-btn" title="Export all mermaid blocks in a single HTML file">
                 Export All
+              </button>
+            )}
+            {onToggleAiChat && (
+              <button
+                type="button"
+                onClick={onToggleAiChat}
+                className={`toolbar-btn ${aiChatOpen ? 'active' : ''}`}
+                aria-pressed={aiChatOpen}
+                title="Chat with Claude about this diagram"
+              >
+                AI Chat
               </button>
             )}
             <button onClick={handleCopyCode} className="toolbar-btn" title="Copy Code">

@@ -49,6 +49,7 @@ Mermalaid includes the features teams usually pay for, while staying free to use
 - **Dark/Light Mode** - Work comfortably in your preferred theme
 - **beautiful-mermaid Themes** - Style both diagrams and app UI with curated themes
 - **Toast Notifications** - Get clear feedback for save, export, and error actions
+- **AI Assistant** - Chat about the diagram you are looking at with your own API key — **Anthropic** (sent straight from the page to Anthropic) or **IBM Consulting Advantage** (routed through this site's own `/api/ica` function, because the ICA API refuses browser calls; pick the namespace and model in Settings). Keys are stored in your browser only. The assistant sees the current diagram and any render error, answers questions about it, and proposes changes as a card you review and apply — nothing is written to your document until you press Apply
 - **AI Syntax Fix** - Fix broken Mermaid syntax quickly using your own OpenAI API key (stored locally on your machine)
 
 ### File Management
@@ -62,6 +63,7 @@ Mermalaid includes the features teams usually pay for, while staying free to use
 - **Export Options**:
   - **SVG Export** - Vector graphics for presentations and documents
   - **PNG Export** - The full diagram at its own size (never cropped to the window, and without the preview's zoom controls), at a resolution you pick: Standard 1× through Ultra 4× for print-quality output. The dialog shows the exact pixel size before you export, and remembers your choice
+  - **PDF Export** - One diagram per page, either for the tab you are on or for every open tab combined into a single document. Each page is the size of its own diagram, so nothing is cropped or letterboxed, and the resolution choice doubles as the print resolution (Standard 1× = 96 dpi through Ultra 4× = 384 dpi)
 - **ASCII Export** - Unicode box-drawing for terminals (flowcharts, state, sequence, class, ER diagrams)
 - **Copy to Clipboard** - Copy Markdown-ready Mermaid blocks for docs and GitHub
 - **Private URL Share** - **Copy private link** stores encrypted diagram data in the URL fragment only (no upload, no server-side storage)
@@ -245,7 +247,7 @@ Mermalaid is source-available and welcomes contributions! See [CONTRIBUTING.md](
 
 Areas where contributions are especially welcome:
 - Additional Mermaid diagram types
-- Export formats (PDF, etc.)
+- Export formats
 - Platform support (Linux)
 - Performance improvements
 - Documentation and examples
@@ -291,7 +293,8 @@ Because this license includes a non-commercial clause, Mermalaid is source-avail
 | **Multiple Open Documents** | ✅ Tabbed, session restored | ✅/❌ Varies |
 | **Sign-Up Required** | ✅ No | ❌ Usually required |
 | **Privacy** | ✅ Local storage only | ❌ Cloud sync required |
-| **Export Options** | ✅ SVG, PNG, ASCII | ✅/❌ Varies |
+| **Export Options** | ✅ SVG, PNG, PDF, ASCII | ✅/❌ Varies |
+| **AI Assistant** | ✅ Your own Anthropic or IBM ICA key, changes need approval | ✅/❌ Varies |
 | **Syntax Validation** | ✅ Real-time | ✅/❌ Varies |
 | **Desktop App** | ✅ Native macOS and Windows | ❌ Often web-only |
 | **Visual Editor** | ✅ Yes (flowcharts) | ❌ Usually code-only |

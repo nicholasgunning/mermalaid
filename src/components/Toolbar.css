@@ -46,6 +46,13 @@
   border-color: var(--app-accent);
 }
 
+/* A toggle button that is currently on (the AI assistant drawer). */
+.toolbar-btn.active {
+  background-color: color-mix(in srgb, var(--app-accent) 16%, transparent);
+  border-color: var(--app-accent);
+  font-weight: 600;
+}
+
 .toolbar-btn:not(.ai-fix-btn):disabled {
   opacity: 0.55;
   cursor: not-allowed;

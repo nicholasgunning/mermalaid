@@ -8,14 +8,14 @@ import {
 } from 'react-zoom-pan-pinch'
 import { useTheme } from '../hooks/useTheme'
 import { useToast } from '../hooks/useToast'
-import { replaceMermaidBlock, type MermaidBlock } from '../utils/mermaidCodeBlock'
+import { type MermaidBlock } from '../utils/mermaidCodeBlock'
+import { applyDiagramCode } from '../utils/applyDiagramCode'
 import { getMermaidThemeOptions, isAppThemeDark } from '../utils/mermaidThemes'
 import { isEditableDiagram, parseMermaidFlowchart } from '../utils/mermaidParser'
 import { normalizeMermaidForBeautifulMermaid } from '../utils/normalizeMermaidForBeautifulMermaid'
 import {
   parseMermaidWithConfig,
   parseMermaidConfigForOfficialRenderer,
-  replaceDiagramInBlock,
 } from '../utils/mermaidYamlConfig'
 import {
   buildMermalaidAboutPreviewHtml,
@@ -258,15 +258,7 @@ export default function Preview({
 
   const handleCodeChange = (newCode: string) => {
     if (!onCodeChange) return
-
-    if (mermaidBlocks.length > 0 && mermaidBlocks[selectedBlockIndex]) {
-      const block = mermaidBlocks[selectedBlockIndex]
-      const newFullContent = replaceDiagramInBlock(block.code, newCode)
-      const updated = replaceMermaidBlock(code, block, newFullContent)
-      onCodeChange(updated)
-    } else {
-      onCodeChange(newCode)
-    }
+    onCodeChange(applyDiagramCode(code, mermaidBlocks, selectedBlockIndex, newCode))
   }
 
   useEffect(() => {

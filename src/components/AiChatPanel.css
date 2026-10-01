@@ -1,0 +1,287 @@
+/* AI assistant panel — a drawer over the right edge of the workspace, so the editor/preview split
+   keeps its own widths and its drag-to-resize behaviour. */
+.ai-chat-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: min(380px, 100%);
+  background-color: var(--app-bg);
+  color: var(--app-fg);
+  border-left: 1px solid var(--app-border);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+.ai-chat-panel-mobile {
+  width: 100%;
+  border-left: none;
+}
+
+.ai-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background-color: var(--app-surface);
+  border-bottom: 1px solid var(--app-border);
+}
+
+.ai-chat-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ai-chat-provider {
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.ai-chat-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ai-chat-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background-color: var(--app-bg);
+  color: var(--app-fg);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-chat-btn:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--app-fg) 8%, transparent);
+}
+
+.ai-chat-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ai-chat-btn-primary {
+  background-color: var(--app-accent);
+  border-color: var(--app-accent);
+  color: #ffffff;
+}
+
+.ai-chat-btn-primary:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--app-accent) 85%, #000000);
+}
+
+.ai-chat-btn-quiet {
+  border-color: transparent;
+  background-color: transparent;
+}
+
+.ai-chat-notice {
+  margin: 12px;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background-color: var(--app-surface);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ai-chat-notice p {
+  margin: 0 0 10px;
+}
+
+.ai-chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-chat-empty {
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+.ai-chat-empty p {
+  margin: 0 0 10px;
+}
+
+.ai-chat-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.ai-chat-suggestion {
+  padding: 6px 10px;
+  border: 1px dashed var(--app-border);
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--app-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ai-chat-suggestion:hover {
+  border-style: solid;
+  background-color: color-mix(in srgb, var(--app-accent) 10%, transparent);
+}
+
+.ai-chat-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.ai-chat-entry-user {
+  align-items: flex-end;
+}
+
+.ai-chat-bubble {
+  max-width: 92%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background-color: var(--app-surface);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ai-chat-entry-user .ai-chat-bubble {
+  background-color: color-mix(in srgb, var(--app-accent) 16%, transparent);
+}
+
+.ai-chat-thinking {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+/* A proposed change: never applied until the user says so, so it reads as a card, not a message. */
+.ai-chat-edit {
+  border: 1px solid var(--app-border);
+  border-left: 3px solid var(--app-accent);
+  border-radius: 8px;
+  padding: 10px;
+  background-color: var(--app-bg);
+  font-size: 13px;
+}
+
+.ai-chat-edit-applied {
+  border-left-color: #2ea043;
+}
+
+.ai-chat-edit-rejected {
+  border-left-color: var(--app-muted);
+  opacity: 0.7;
+}
+
+.ai-chat-edit-summary {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.ai-chat-edit-toggle {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--app-accent);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.ai-chat-edit-source {
+  margin: 8px 0 0;
+  padding: 8px;
+  max-height: 240px;
+  overflow: auto;
+  border-radius: 6px;
+  background-color: var(--app-surface);
+  font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.ai-chat-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ai-chat-edit-status {
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.ai-chat-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 12px 8px;
+  padding: 8px 10px;
+  border: 1px solid #d1242f;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, #d1242f 12%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ai-chat-composer {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--app-border);
+  background-color: var(--app-surface);
+}
+
+.ai-chat-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background-color: var(--app-bg);
+  color: var(--app-fg);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.ai-chat-input:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: -1px;
+}
+
+.ai-chat-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ai-chat-hint {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+@media (max-width: 640px) {
+  .ai-chat-hint {
+    display: none;
+  }
+}

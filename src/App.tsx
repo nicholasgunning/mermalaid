@@ -13,6 +13,9 @@ import Editor from './components/Editor'
 import Preview from './components/Preview'
 import PanelDivider from './components/PanelDivider'
 import Toolbar, { type ToolbarRef } from './components/Toolbar'
+import AiChatPanel from './components/AiChatPanel'
+import { useDiagramAssistant } from './hooks/useDiagramAssistant'
+import { applyDiagramCode } from './utils/applyDiagramCode'
 import TabBar from './components/TabBar'
 import ConfirmDialog from './components/ConfirmDialog'
 import LandingPage from './components/LandingPage'
@@ -227,6 +230,21 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
   const activeCode = hasMultipleBlocks
     ? (mermaidBlocks[selectedBlockIndex]?.code ?? '')
     : extractMermaidCode(code)
+
+  const [showAiChat, setShowAiChat] = useState(false)
+
+  /** An approved assistant edit lands exactly where the visual editor's would. */
+  const applyAssistantDiagram = useCallback(
+    (mermaid: string) => {
+      setCode(applyDiagramCode(code, mermaidBlocks, selectedBlockIndex, mermaid))
+    },
+    [code, mermaidBlocks, selectedBlockIndex, setCode],
+  )
+
+  const assistant = useDiagramAssistant({
+    context: { code: activeCode, documentName: tabTitle(activeTab), error },
+    onApplyDiagram: applyAssistantDiagram,
+  })
 
   // Reset the block index when this document's block count changes — but not when the count
   // changes because another tab was focused, since each tab keeps its own selection.
@@ -496,6 +514,8 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
         error={error}
         activeCode={activeCode}
         mermaidBlocks={mermaidBlocks}
+        tabs={documents.tabs}
+        activeTabId={documents.activeId}
         documentPathRef={documentPathRef}
         setDocumentPath={setDocumentPath}
         openDocument={documents.openDocument}
@@ -503,6 +523,8 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
         setDocumentName={documents.setActiveName}
         onDocumentSaved={handleDocumentSaved}
         isMobile={isSmartphoneLayout}
+        aiChatOpen={showAiChat}
+        onToggleAiChat={() => setShowAiChat((open) => !open)}
       />
       <TabBar
         tabs={documents.tabs}
@@ -584,6 +606,13 @@ function EditorView({ pendingRelease, onDismissPendingRelease }: ReleaseBannerRo
             fileLabel={recentFileLabel}
           />
         )}
+        <AiChatPanel
+          open={showAiChat}
+          assistant={assistant}
+          onClose={() => setShowAiChat(false)}
+          onOpenSettings={() => toolbarRef.current?.openSettings()}
+          isMobile={isSmartphoneLayout}
+        />
       </div>
       {isSmartphoneLayout && (
         <div className="mobile-bottom-bar" role="navigation" aria-label="Mobile workspace">

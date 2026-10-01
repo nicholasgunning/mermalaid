@@ -117,10 +117,63 @@
   font-size: 14px;
 }
 
+.api-key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .api-key-input-wrapper {
   position: relative;
   display: flex;
   align-items: center;
+  /* The field takes the row; Clear sits beside it, clear of the show/hide toggle inside. */
+  flex: 1;
+  min-width: 0;
+}
+
+.api-key-clear {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+}
+
+.settings-warning {
+  margin: 8px 0 0 0;
+  color: #d1242f;
+  font-size: 12px;
+}
+
+.settings-saved {
+  margin: 8px 0 0 0;
+  color: #1a7f37;
+  font-size: 12px;
+}
+
+.settings-select {
+  padding: 9px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.settings-select-block {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+}
+
+.settings-inline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-inline-row .settings-select {
+  flex: 1;
+  min-width: 0;
 }
 
 .api-key-input {
@@ -176,7 +229,7 @@
 
 .settings-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 20px;
   border-top: 1px solid var(--border-color);
   gap: 10px;

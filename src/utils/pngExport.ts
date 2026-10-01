@@ -77,13 +77,20 @@ export function getSvgExportSize(svg: SVGSVGElement): SvgExportSize | null {
   return null
 }
 
-/** Largest multiplier at or below `scale` that still fits in a canvas, never below 1. */
+/**
+ * Largest multiplier at or below `scale` that still fits in a canvas.
+ *
+ * A request of 1× or more never comes back below 1 unless the diagram itself is past the limit.
+ * A request below 1 is honoured as-is: PDF export asks for less on purpose, to keep a document's
+ * worth of pages within a sane amount of memory.
+ */
 export function clampScaleToCanvasLimits(size: SvgExportSize, scale: number): number {
   const bySide = MAX_CANVAS_SIDE_PX / Math.max(size.width, size.height)
   const byArea = Math.sqrt(MAX_CANVAS_AREA_PX / (size.width * size.height))
   const maxScale = Math.min(bySide, byArea)
   if (!Number.isFinite(maxScale) || maxScale <= 0) return 1
-  return Math.max(Math.min(scale, maxScale), Math.min(1, maxScale))
+  const fitted = Math.min(scale, maxScale)
+  return scale < 1 ? fitted : Math.max(fitted, Math.min(1, maxScale))
 }
 
 /** Output pixel dimensions for a scale, after clamping — what the export dialog shows. */
@@ -137,11 +144,16 @@ export interface RasterizeOptions {
   background?: string
 }
 
-/** Draws serialized SVG markup onto a canvas and returns it as a PNG blob. */
-export async function rasterizeSvgToPngBlob(
+/**
+ * Draws serialized SVG markup onto an offscreen canvas at `scale`.
+ *
+ * Shared with PDF export, which needs the pixels rather than an encoded image, so the clamping
+ * and background handling live here instead of in each exporter.
+ */
+export async function rasterizeSvgToCanvas(
   markup: string,
   { size, scale, background }: RasterizeOptions,
-): Promise<Blob> {
+): Promise<HTMLCanvasElement> {
   const applied = clampScaleToCanvasLimits(size, scale)
   const width = Math.max(1, Math.round(size.width * applied))
   const height = Math.max(1, Math.round(size.height * applied))
@@ -152,12 +164,21 @@ export async function rasterizeSvgToPngBlob(
   canvas.height = height
 
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Canvas is not available for PNG export.')
+  if (!ctx) throw new Error('Canvas is not available for image export.')
   if (background) {
     ctx.fillStyle = background
     ctx.fillRect(0, 0, width, height)
   }
   ctx.drawImage(image, 0, 0, width, height)
+  return canvas
+}
+
+/** Draws serialized SVG markup onto a canvas and returns it as a PNG blob. */
+export async function rasterizeSvgToPngBlob(
+  markup: string,
+  options: RasterizeOptions,
+): Promise<Blob> {
+  const canvas = await rasterizeSvgToCanvas(markup, options)
 
   const blob = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob((b) => resolve(b), 'image/png')
